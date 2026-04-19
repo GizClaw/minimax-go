@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/giztoy/minimax-go/internal/protocol"
-	"github.com/giztoy/minimax-go/internal/transport"
+	"github.com/GizClaw/minimax-go/internal/protocol"
+	"github.com/GizClaw/minimax-go/internal/transport"
 )
 
 func TestFileUpload(t *testing.T) {

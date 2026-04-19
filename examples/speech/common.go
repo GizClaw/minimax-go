@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	minimax "github.com/giztoy/minimax-go"
+	minimax "github.com/GizClaw/minimax-go"
 )
 
 const exampleDefaultBaseURL = "https://api.minimax.io"

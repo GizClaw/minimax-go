@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/giztoy/minimax-go/internal/protocol"
+	"github.com/GizClaw/minimax-go/internal/protocol"
 )
 
 const (

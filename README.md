@@ -1,8 +1,8 @@
 # minimax-go
 
-[![Go CI](https://github.com/giztoy/minimax-go/actions/workflows/go-ci.yml/badge.svg)](https://github.com/giztoy/minimax-go/actions/workflows/go-ci.yml)
-[![CodeQL](https://github.com/giztoy/minimax-go/actions/workflows/codeql.yml/badge.svg)](https://github.com/giztoy/minimax-go/actions/workflows/codeql.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/giztoy/minimax-go)](https://goreportcard.com/report/github.com/giztoy/minimax-go)
+[![Go CI](https://github.com/GizClaw/minimax-go/actions/workflows/go-ci.yml/badge.svg)](https://github.com/GizClaw/minimax-go/actions/workflows/go-ci.yml)
+[![CodeQL](https://github.com/GizClaw/minimax-go/actions/workflows/codeql.yml/badge.svg)](https://github.com/GizClaw/minimax-go/actions/workflows/codeql.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/GizClaw/minimax-go)](https://goreportcard.com/report/github.com/GizClaw/minimax-go)
 
 Go SDK and examples for MiniMax APIs.
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	minimax "github.com/giztoy/minimax-go"
+	minimax "github.com/GizClaw/minimax-go"
 )
 
 func TestWaitTask(t *testing.T) {

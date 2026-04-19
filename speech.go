@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/giztoy/minimax-go/internal/codec"
-	"github.com/giztoy/minimax-go/internal/transport"
+	"github.com/GizClaw/minimax-go/internal/codec"
+	"github.com/GizClaw/minimax-go/internal/transport"
 )
 
 const (
