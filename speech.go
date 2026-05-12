@@ -33,8 +33,9 @@ type SpeechRequest struct {
 }
 
 type SpeechResponse struct {
-	Audio       []byte
-	RawHexAudio string
+	ResponseMeta ResponseMeta
+	Audio        []byte
+	RawHexAudio  string
 }
 
 type speechSynthesizeRawResponse struct {
@@ -96,11 +97,12 @@ func (s *SpeechService) Synthesize(ctx context.Context, request SpeechRequest) (
 	}
 
 	var raw speechSynthesizeRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: "POST",
 		Path:   s.endpoint,
 		Body:   wireReq,
-	}, &raw); err != nil {
+	}, &raw)
+	if err != nil {
 		return nil, err
 	}
 
@@ -122,8 +124,9 @@ func (s *SpeechService) Synthesize(ctx context.Context, request SpeechRequest) (
 	}
 
 	return &SpeechResponse{
-		Audio:       audio,
-		RawHexAudio: hexAudio,
+		ResponseMeta: responseMetaFromTransport(meta),
+		Audio:        audio,
+		RawHexAudio:  hexAudio,
 	}, nil
 }
 

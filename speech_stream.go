@@ -35,11 +35,12 @@ type SpeechChunk struct {
 
 // SpeechStream reads speech stream events and yields decoded audio chunks.
 type SpeechStream struct {
-	body      io.ReadCloser
-	reader    *stream.Reader
-	done      bool
-	closeOnce sync.Once
-	closeErr  error
+	ResponseMeta ResponseMeta
+	body         io.ReadCloser
+	reader       *stream.Reader
+	done         bool
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 type speechStreamWireRequest struct {
@@ -137,7 +138,7 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		}
 	}
 
-	body, err := s.transport.OpenStream(ctx, transport.StreamRequest{
+	streamResponse, err := s.transport.OpenStreamWithMeta(ctx, transport.StreamRequest{
 		Method: http.MethodPost,
 		Path:   s.streamPath(),
 		Body:   wireReq,
@@ -147,8 +148,9 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 	}
 
 	return &SpeechStream{
-		body:   body,
-		reader: stream.NewReader(body),
+		ResponseMeta: responseMetaFromTransport(streamResponse.Meta),
+		body:         streamResponse.Body,
+		reader:       stream.NewReader(streamResponse.Body),
 	}, nil
 }
 

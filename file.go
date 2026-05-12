@@ -42,10 +42,11 @@ type FileMeta struct {
 }
 
 type FileUploadResponse struct {
-	FileID   string   `json:"file_id,omitempty"`
-	FileURL  string   `json:"file_url,omitempty"`
-	Uploaded bool     `json:"uploaded"`
-	Meta     FileMeta `json:"meta,omitempty"`
+	ResponseMeta ResponseMeta `json:"response_meta,omitzero"`
+	FileID       string       `json:"file_id,omitempty"`
+	FileURL      string       `json:"file_url,omitempty"`
+	Uploaded     bool         `json:"uploaded"`
+	Meta         FileMeta     `json:"meta,omitempty"`
 }
 
 type flexibleString string
@@ -118,7 +119,7 @@ func (s *FileService) Upload(ctx context.Context, request FileUploadRequest) (*F
 	}
 
 	var raw fileUploadRawResponse
-	if err := s.transport.Upload(ctx, transport.UploadRequest{
+	meta, err := s.transport.UploadWithMeta(ctx, transport.UploadRequest{
 		Method:          http.MethodPost,
 		Path:            s.resolveUploadPath(),
 		Fields:          fields,
@@ -126,11 +127,14 @@ func (s *FileService) Upload(ctx context.Context, request FileUploadRequest) (*F
 		FileName:        request.FileName,
 		FileContentType: contentType,
 		FileData:        request.Data,
-	}, &raw); err != nil {
+	}, &raw)
+	if err != nil {
 		return nil, err
 	}
 
-	return mapFileUploadResponse(raw, request, contentType), nil
+	response := mapFileUploadResponse(raw, request, contentType)
+	response.ResponseMeta = responseMetaFromTransport(meta)
+	return response, nil
 }
 
 func (s *FileService) resolveUploadPath() string {

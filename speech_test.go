@@ -29,6 +29,7 @@ func TestSpeechSynthesize(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Trace-ID", "trace-speech-1")
 			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"data":{"audio_hex":"48656c6c6f"}}`))
 		}))
 		defer srv.Close()
@@ -55,6 +56,10 @@ func TestSpeechSynthesize(t *testing.T) {
 
 		if string(resp.Audio) != "Hello" {
 			t.Fatalf("resp.Audio = %q, want %q", string(resp.Audio), "Hello")
+		}
+
+		if resp.ResponseMeta.TraceID != "trace-speech-1" {
+			t.Fatalf("resp.ResponseMeta.TraceID = %q, want trace-speech-1", resp.ResponseMeta.TraceID)
 		}
 	})
 

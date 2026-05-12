@@ -48,6 +48,13 @@ type Client struct {
 	retry          RetryConfig
 }
 
+type ResponseMeta struct {
+	RequestID  string
+	TraceID    string
+	HTTPStatus int
+	Header     http.Header
+}
+
 type JSONRequest struct {
 	Method  string
 	Path    string
@@ -95,6 +102,12 @@ func New(config Config) (*Client, error) {
 
 // DoJSON sends a JSON request and unmarshals the response into out.
 func (c *Client) DoJSON(ctx context.Context, request JSONRequest, out any) error {
+	_, err := c.DoJSONWithMeta(ctx, request, out)
+	return err
+}
+
+// DoJSONWithMeta sends a JSON request, unmarshals the response, and returns response metadata.
+func (c *Client) DoJSONWithMeta(ctx context.Context, request JSONRequest, out any) (ResponseMeta, error) {
 	method := request.Method
 	if method == "" {
 		method = http.MethodPost
@@ -102,9 +115,10 @@ func (c *Client) DoJSON(ctx context.Context, request JSONRequest, out any) error
 
 	payload, err := marshalRequestBody(request.Body, "marshal request body")
 	if err != nil {
-		return err
+		return ResponseMeta{}, err
 	}
 
+	var meta ResponseMeta
 	err = c.withRetry(ctx, func() error {
 		req, reqErr := c.buildRequest(ctx, method, request.Path, request.Query, bytes.NewReader(payload))
 		if reqErr != nil {
@@ -126,21 +140,39 @@ func (c *Client) DoJSON(ctx context.Context, request JSONRequest, out any) error
 			return fmt.Errorf("read response body: %w", readErr)
 		}
 
-		if checkErr := protocol.CheckResponse(resp.StatusCode, body); checkErr != nil {
+		meta = extractResponseMeta(resp, body)
+		if checkErr := protocol.CheckResponseWithTrace(resp.StatusCode, body, protocol.TraceMeta{
+			RequestID: meta.RequestID,
+			TraceID:   meta.TraceID,
+		}); checkErr != nil {
 			return checkErr
 		}
 
 		return decodeResponseBody(body, out, "decode response body")
 	})
 	if err != nil {
-		return err
+		return ResponseMeta{}, err
 	}
 
-	return nil
+	return meta, nil
 }
 
 // OpenStream opens a streaming connection; caller must close the returned body.
 func (c *Client) OpenStream(ctx context.Context, request StreamRequest) (io.ReadCloser, error) {
+	streamResponse, err := c.OpenStreamWithMeta(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return streamResponse.Body, nil
+}
+
+type StreamResponse struct {
+	Body io.ReadCloser
+	Meta ResponseMeta
+}
+
+// OpenStreamWithMeta opens a streaming connection and returns response metadata.
+func (c *Client) OpenStreamWithMeta(ctx context.Context, request StreamRequest) (*StreamResponse, error) {
 	method := request.Method
 	if method == "" {
 		method = http.MethodGet
@@ -153,9 +185,9 @@ func (c *Client) OpenStream(ctx context.Context, request StreamRequest) (io.Read
 
 	var lastErr error
 	for attempt := 1; attempt <= c.retry.MaxAttempts; attempt++ {
-		body, openErr := c.openStreamAttempt(ctx, method, payload, request)
+		streamResponse, openErr := c.openStreamAttempt(ctx, method, payload, request)
 		if openErr == nil {
-			return body, nil
+			return streamResponse, nil
 		}
 
 		lastErr = openErr
@@ -177,20 +209,27 @@ func (c *Client) OpenStream(ctx context.Context, request StreamRequest) (io.Read
 
 // Upload sends a multipart/form-data request.
 func (c *Client) Upload(ctx context.Context, request UploadRequest, out any) error {
+	_, err := c.UploadWithMeta(ctx, request, out)
+	return err
+}
+
+// UploadWithMeta sends a multipart/form-data request and returns response metadata.
+func (c *Client) UploadWithMeta(ctx context.Context, request UploadRequest, out any) (ResponseMeta, error) {
 	method := request.Method
 	if method == "" {
 		method = http.MethodPost
 	}
 
 	if request.FileField == "" {
-		return errors.New("upload request requires FileField")
+		return ResponseMeta{}, errors.New("upload request requires FileField")
 	}
 
 	if request.FileName == "" {
-		return errors.New("upload request requires FileName")
+		return ResponseMeta{}, errors.New("upload request requires FileName")
 	}
 
-	return c.withRetry(ctx, func() error {
+	var meta ResponseMeta
+	err := c.withRetry(ctx, func() error {
 		payload, contentType, err := buildUploadPayload(request)
 		if err != nil {
 			return err
@@ -216,15 +255,24 @@ func (c *Client) Upload(ctx context.Context, request UploadRequest, out any) err
 			return fmt.Errorf("read upload response: %w", readErr)
 		}
 
-		if checkErr := protocol.CheckResponse(resp.StatusCode, body); checkErr != nil {
+		meta = extractResponseMeta(resp, body)
+		if checkErr := protocol.CheckResponseWithTrace(resp.StatusCode, body, protocol.TraceMeta{
+			RequestID: meta.RequestID,
+			TraceID:   meta.TraceID,
+		}); checkErr != nil {
 			return checkErr
 		}
 
 		return decodeResponseBody(body, out, "decode upload response")
 	})
+	if err != nil {
+		return ResponseMeta{}, err
+	}
+
+	return meta, nil
 }
 
-func (c *Client) openStreamAttempt(ctx context.Context, method string, payload []byte, request StreamRequest) (io.ReadCloser, error) {
+func (c *Client) openStreamAttempt(ctx context.Context, method string, payload []byte, request StreamRequest) (*StreamResponse, error) {
 	req, reqErr := c.buildRequest(ctx, method, request.Path, request.Query, bytes.NewReader(payload))
 	if reqErr != nil {
 		return nil, reqErr
@@ -244,14 +292,18 @@ func (c *Client) openStreamAttempt(ctx context.Context, method string, payload [
 	return c.validateStreamResponse(resp)
 }
 
-func (c *Client) validateStreamResponse(resp *http.Response) (io.ReadCloser, error) {
+func (c *Client) validateStreamResponse(resp *http.Response) (*StreamResponse, error) {
+	meta := extractResponseMeta(resp, nil)
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, readResponseError(resp, "read stream error response")
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if isEventStreamContentType(contentType) {
-		return resp.Body, nil
+		return &StreamResponse{
+			Body: resp.Body,
+			Meta: meta,
+		}, nil
 	}
 
 	if err := readResponseError(resp, "read non-stream response body"); err != nil {
@@ -268,7 +320,11 @@ func readResponseError(resp *http.Response, readErrPrefix string) error {
 		return fmt.Errorf("%s: %w", readErrPrefix, err)
 	}
 
-	return protocol.CheckResponse(resp.StatusCode, body)
+	meta := extractResponseMeta(resp, body)
+	return protocol.CheckResponseWithTrace(resp.StatusCode, body, protocol.TraceMeta{
+		RequestID: meta.RequestID,
+		TraceID:   meta.TraceID,
+	})
 }
 
 func marshalRequestBody(body any, errorPrefix string) ([]byte, error) {
@@ -294,6 +350,54 @@ func decodeResponseBody(body []byte, out any, errorPrefix string) error {
 	}
 
 	return nil
+}
+
+func extractResponseMeta(resp *http.Response, body []byte) ResponseMeta {
+	if resp == nil {
+		return ResponseMeta{}
+	}
+
+	bodyTrace := protocol.ExtractTraceMeta(body)
+	headerTrace := extractHeaderTraceMeta(resp.Header)
+
+	return ResponseMeta{
+		RequestID:  firstNonEmpty(headerTrace.RequestID, bodyTrace.RequestID),
+		TraceID:    firstNonEmpty(headerTrace.TraceID, bodyTrace.TraceID),
+		HTTPStatus: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+	}
+}
+
+func extractHeaderTraceMeta(header http.Header) protocol.TraceMeta {
+	if header == nil {
+		return protocol.TraceMeta{}
+	}
+
+	return protocol.TraceMeta{
+		RequestID: firstNonEmpty(
+			header.Get("X-Request-ID"),
+			header.Get("X-Request-Id"),
+			header.Get("X-Minimax-Request-ID"),
+			header.Get("MiniMax-Request-ID"),
+			header.Get("Request-ID"),
+		),
+		TraceID: firstNonEmpty(
+			header.Get("X-Trace-ID"),
+			header.Get("X-Trace-Id"),
+			header.Get("X-Minimax-Trace-ID"),
+			header.Get("MiniMax-Trace-ID"),
+			header.Get("Trace-ID"),
+		),
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func buildUploadPayload(request UploadRequest) ([]byte, string, error) {

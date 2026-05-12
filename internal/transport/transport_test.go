@@ -24,6 +24,7 @@ func TestDoJSON(t *testing.T) {
 	t.Run("retry eventually success", testDoJSONRetryEventuallySuccess)
 	t.Run("retry exhausted returns last retryable error", testDoJSONRetryExhausted)
 	t.Run("request headers override default headers", testDoJSONHeaderOverride)
+	t.Run("response metadata", testDoJSONResponseMeta)
 	t.Run("timeout canceled by context", testDoJSONContextTimeout)
 }
 
@@ -68,7 +69,8 @@ func testDoJSONBaseRespError(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"base_resp":{"status_code":2301,"status_msg":"invalid model"}}`))
+		w.Header().Set("X-Trace-ID", "trace-error-header")
+		_, _ = w.Write([]byte(`{"base_resp":{"status_code":2301,"status_msg":"invalid model"},"trace_id":"trace-error-body"}`))
 	}))
 	defer srv.Close()
 
@@ -89,6 +91,44 @@ func testDoJSONBaseRespError(t *testing.T) {
 
 	if apiErr.StatusCode != 2301 {
 		t.Fatalf("apiErr.StatusCode = %d, want 2301", apiErr.StatusCode)
+	}
+
+	if apiErr.TraceID != "trace-error-header" {
+		t.Fatalf("apiErr.TraceID = %q, want trace-error-header", apiErr.TraceID)
+	}
+}
+
+func testDoJSONResponseMeta(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-ID", "req-header")
+		w.Header().Set("X-Trace-ID", "trace-header")
+		_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"request_id":"req-body","trace_id":"trace-body","value":"done"}`))
+	}))
+	defer srv.Close()
+
+	client, err := New(Config{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	var out struct {
+		Value string `json:"value"`
+	}
+
+	meta, err := client.DoJSONWithMeta(context.Background(), JSONRequest{Path: "/json"}, &out)
+	if err != nil {
+		t.Fatalf("DoJSONWithMeta() error = %v, want nil", err)
+	}
+
+	if meta.RequestID != "req-header" || meta.TraceID != "trace-header" {
+		t.Fatalf("meta = %+v, want request_id=req-header trace_id=trace-header", meta)
+	}
+
+	if meta.HTTPStatus != http.StatusOK {
+		t.Fatalf("meta.HTTPStatus = %d, want %d", meta.HTTPStatus, http.StatusOK)
 	}
 }
 

@@ -54,6 +54,7 @@ type Voice struct {
 }
 
 type ListVoicesResponse struct {
+	ResponseMeta  ResponseMeta               `json:"response_meta,omitzero"`
 	Voices        []Voice                    `json:"voices"`
 	NextPageToken string                     `json:"next_page_token,omitempty"`
 	HasMore       bool                       `json:"has_more,omitempty"`
@@ -61,15 +62,17 @@ type ListVoicesResponse struct {
 }
 
 type DesignVoiceResponse struct {
-	VoiceID    string                     `json:"voice_id,omitempty"`
-	TrialAudio string                     `json:"trial_audio,omitempty"`
-	Raw        map[string]json.RawMessage `json:"-"`
+	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
+	VoiceID      string                     `json:"voice_id,omitempty"`
+	TrialAudio   string                     `json:"trial_audio,omitempty"`
+	Raw          map[string]json.RawMessage `json:"-"`
 }
 
 type CloneVoiceResponse struct {
-	VoiceID   string                     `json:"voice_id,omitempty"`
-	DemoAudio string                     `json:"demo_audio,omitempty"`
-	Raw       map[string]json.RawMessage `json:"-"`
+	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
+	VoiceID      string                     `json:"voice_id,omitempty"`
+	DemoAudio    string                     `json:"demo_audio,omitempty"`
+	Raw          map[string]json.RawMessage `json:"-"`
 }
 
 type listVoicesWireRequest struct {
@@ -132,16 +135,18 @@ func (s *VoiceService) ListVoices(ctx context.Context, request *ListVoicesReques
 	}
 
 	var raw listVoicesRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodPost,
 		Path:   s.resolveListPath(),
 		Query:  query,
 		Body:   payload,
-	}, &raw); err != nil {
+	}, &raw)
+	if err != nil {
 		return nil, err
 	}
 
 	return &ListVoicesResponse{
+		ResponseMeta:  responseMetaFromTransport(meta),
 		Voices:        collectVoices(raw),
 		NextPageToken: strings.TrimSpace(raw.NextPageToken),
 		HasMore:       raw.HasMore,
@@ -161,18 +166,20 @@ func (s *VoiceService) DesignVoice(ctx context.Context, request *DesignVoiceRequ
 	}
 
 	var raw designVoiceRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodPost,
 		Path:   s.resolveDesignPath(),
 		Body:   payload,
-	}, &raw); err != nil {
+	}, &raw)
+	if err != nil {
 		return nil, err
 	}
 
 	return &DesignVoiceResponse{
-		VoiceID:    firstNonEmptyValue(raw.VoiceID, raw.CustomID, payload.VoiceID),
-		TrialAudio: firstNonEmptyValue(raw.TrialAudio, raw.DemoAudio, raw.PreviewAudio),
-		Raw:        cloneRawMessages(raw.Raw),
+		ResponseMeta: responseMetaFromTransport(meta),
+		VoiceID:      firstNonEmptyValue(raw.VoiceID, raw.CustomID, payload.VoiceID),
+		TrialAudio:   firstNonEmptyValue(raw.TrialAudio, raw.DemoAudio, raw.PreviewAudio),
+		Raw:          cloneRawMessages(raw.Raw),
 	}, nil
 }
 
@@ -188,18 +195,20 @@ func (s *VoiceService) CloneVoice(ctx context.Context, request *CloneVoiceReques
 	}
 
 	var raw cloneVoiceRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodPost,
 		Path:   s.resolveClonePath(),
 		Body:   payload,
-	}, &raw); err != nil {
+	}, &raw)
+	if err != nil {
 		return nil, err
 	}
 
 	return &CloneVoiceResponse{
-		VoiceID:   firstNonEmptyValue(raw.VoiceID, raw.CustomID, payload.VoiceID),
-		DemoAudio: firstNonEmptyValue(raw.DemoAudio, raw.TrialAudio, raw.PreviewAudio),
-		Raw:       cloneRawMessages(raw.Raw),
+		ResponseMeta: responseMetaFromTransport(meta),
+		VoiceID:      firstNonEmptyValue(raw.VoiceID, raw.CustomID, payload.VoiceID),
+		DemoAudio:    firstNonEmptyValue(raw.DemoAudio, raw.TrialAudio, raw.PreviewAudio),
+		Raw:          cloneRawMessages(raw.Raw),
 	}, nil
 }
 

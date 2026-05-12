@@ -51,6 +51,7 @@ type SpeechAsyncSubmitRequest struct {
 }
 
 type SpeechAsyncSubmitResponse struct {
+	ResponseMeta    ResponseMeta               `json:"response_meta,omitzero"`
 	TaskID          string                     `json:"task_id"`
 	Status          SpeechTaskState            `json:"status,omitempty"`
 	RawStatus       string                     `json:"raw_status,omitempty"`
@@ -82,6 +83,7 @@ type SpeechTaskResult struct {
 }
 
 type SpeechTaskStatusResponse struct {
+	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
 	TaskID       string                     `json:"task_id"`
 	Status       SpeechTaskState            `json:"status,omitempty"`
 	RawStatus    string                     `json:"raw_status,omitempty"`
@@ -243,15 +245,17 @@ func (s *SpeechAsyncService) SubmitAsync(ctx context.Context, request SpeechAsyn
 	}
 
 	var rawResponse speechAsyncSubmitRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodPost,
 		Path:   s.submitPath(),
 		Body:   wireRequest,
-	}, &rawResponse); err != nil {
+	}, &rawResponse)
+	if err != nil {
 		return nil, err
 	}
 
 	response := mapSpeechAsyncSubmitResponse(rawResponse)
+	response.ResponseMeta = responseMetaFromTransport(meta)
 	if response.TaskID == "" {
 		return nil, errors.New("speech async submit response missing task_id")
 	}
@@ -278,11 +282,12 @@ func (s *SpeechAsyncService) GetAsyncTask(ctx context.Context, taskID string) (*
 	query.Set("task_id", request.TaskID)
 
 	var rawResponse speechTaskRawResponse
-	if err := s.transport.DoJSON(ctx, transport.JSONRequest{
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodGet,
 		Path:   s.queryPath(),
 		Query:  query,
-	}, &rawResponse); err != nil {
+	}, &rawResponse)
+	if err != nil {
 		return nil, err
 	}
 
@@ -290,6 +295,7 @@ func (s *SpeechAsyncService) GetAsyncTask(ctx context.Context, taskID string) (*
 	if err != nil {
 		return nil, err
 	}
+	response.ResponseMeta = responseMetaFromTransport(meta)
 
 	if response.TaskID == "" {
 		response.TaskID = request.TaskID
