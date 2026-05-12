@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -52,7 +53,7 @@ type speechStreamWireRequest struct {
 }
 
 type speechStreamEventPayload struct {
-	Data       speechStreamEventData `json:"data,omitempty"`
+	Data       speechStreamEventData `json:"data"`
 	AudioHex   string                `json:"audio_hex,omitempty"`
 	Audio      string                `json:"audio,omitempty"`
 	Hex        string                `json:"hex,omitempty"`
@@ -324,13 +325,7 @@ func (p speechStreamEventPayload) done() bool {
 		p.Data.State,
 	}
 
-	for _, status := range statuses {
-		if isSpeechStreamDoneStatus(status) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(statuses, isSpeechStreamDoneStatus)
 }
 
 func (p speechStreamEventPayload) status() (int, string) {

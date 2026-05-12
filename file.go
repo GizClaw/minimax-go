@@ -46,7 +46,7 @@ type FileUploadResponse struct {
 	FileID       string       `json:"file_id,omitempty"`
 	FileURL      string       `json:"file_url,omitempty"`
 	Uploaded     bool         `json:"uploaded"`
-	Meta         FileMeta     `json:"meta,omitempty"`
+	Meta         FileMeta     `json:"meta"`
 }
 
 type flexibleString string

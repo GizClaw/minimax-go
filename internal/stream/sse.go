@@ -116,13 +116,13 @@ func applyEventField(event *Event, dataLines *[]string, field, value string) {
 }
 
 func splitField(line string) (string, string) {
-	idx := strings.IndexByte(line, ':')
-	if idx == -1 {
+	before, after, ok := strings.Cut(line, ":")
+	if !ok {
 		return line, ""
 	}
 
-	field := line[:idx]
-	value := line[idx+1:]
+	field := before
+	value := after
 	if strings.HasPrefix(value, " ") {
 		value = value[1:]
 	}

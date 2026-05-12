@@ -79,7 +79,7 @@ type SpeechTaskResult struct {
 	AudioURL    string         `json:"audio_url,omitempty"`
 	RawHexAudio string         `json:"raw_hex_audio,omitempty"`
 	Audio       []byte         `json:"audio,omitempty"`
-	Meta        SpeechTaskMeta `json:"meta,omitempty"`
+	Meta        SpeechTaskMeta `json:"meta"`
 }
 
 type SpeechTaskStatusResponse struct {
@@ -87,7 +87,7 @@ type SpeechTaskStatusResponse struct {
 	TaskID       string                     `json:"task_id"`
 	Status       SpeechTaskState            `json:"status,omitempty"`
 	RawStatus    string                     `json:"raw_status,omitempty"`
-	Result       SpeechTaskResult           `json:"result,omitempty"`
+	Result       SpeechTaskResult           `json:"result"`
 	ErrorMessage string                     `json:"error_message,omitempty"`
 	Raw          map[string]json.RawMessage `json:"-"`
 }

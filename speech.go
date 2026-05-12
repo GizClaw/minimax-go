@@ -43,7 +43,7 @@ type speechSynthesizeRawResponse struct {
 		AudioHex string `json:"audio_hex,omitempty"`
 		Audio    string `json:"audio,omitempty"`
 		Hex      string `json:"hex,omitempty"`
-	} `json:"data,omitempty"`
+	} `json:"data"`
 	AudioHex string `json:"audio_hex,omitempty"`
 	Audio    string `json:"audio,omitempty"`
 	Hex      string `json:"hex,omitempty"`
