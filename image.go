@@ -36,13 +36,35 @@ type ImageTextToImageRequest struct {
 	AIGCWatermark   *bool       `json:"aigc_watermark,omitempty"`
 }
 
+// ImageImageToImageRequest contains parameters for MiniMax image-to-image generation.
+type ImageImageToImageRequest struct {
+	Model             string                  `json:"model"`
+	Prompt            string                  `json:"prompt"`
+	SubjectReferences []ImageSubjectReference `json:"subject_reference,omitempty"`
+	Style             *ImageStyle             `json:"style,omitempty"`
+	AspectRatio       string                  `json:"aspect_ratio,omitempty"`
+	Width             *int                    `json:"width,omitempty"`
+	Height            *int                    `json:"height,omitempty"`
+	ResponseFormat    string                  `json:"response_format,omitempty"`
+	Seed              *int64                  `json:"seed,omitempty"`
+	N                 *int                    `json:"n,omitempty"`
+	PromptOptimizer   *bool                   `json:"prompt_optimizer,omitempty"`
+	AIGCWatermark     *bool                   `json:"aigc_watermark,omitempty"`
+}
+
+// ImageSubjectReference describes an image reference used by image-to-image generation.
+type ImageSubjectReference struct {
+	Type      string `json:"type"`
+	ImageFile string `json:"image_file"`
+}
+
 // ImageStyle configures style controls for models that support them.
 type ImageStyle struct {
 	StyleType   string   `json:"style_type"`
 	StyleWeight *float64 `json:"style_weight,omitempty"`
 }
 
-// ImageGenerationResponse is a normalized text-to-image generation response.
+// ImageGenerationResponse is a normalized image generation response.
 type ImageGenerationResponse struct {
 	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
 	ID           string                     `json:"id,omitempty"`
@@ -106,6 +128,32 @@ func (s *ImageService) GenerateTextToImage(ctx context.Context, request ImageTex
 	return response, nil
 }
 
+// GenerateImageToImage generates images from a prompt and subject reference images.
+func (s *ImageService) GenerateImageToImage(ctx context.Context, request ImageImageToImageRequest) (*ImageGenerationResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("image service is not initialized")
+	}
+
+	normalizeImageImageToImageRequest(&request)
+	if err := validateImageImageToImageRequest(request); err != nil {
+		return nil, err
+	}
+
+	var raw imageGenerationRawResponse
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
+		Method: http.MethodPost,
+		Path:   s.resolvePath(),
+		Body:   request,
+	}, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	response := mapImageGenerationResponse(raw)
+	response.ResponseMeta = responseMetaFromTransport(meta)
+	return response, nil
+}
+
 func (s *ImageService) resolvePath() string {
 	path := strings.TrimSpace(s.endpoint)
 	if path != "" {
@@ -128,46 +176,121 @@ func normalizeImageTextToImageRequest(request *ImageTextToImageRequest) {
 	}
 }
 
+func normalizeImageImageToImageRequest(request *ImageImageToImageRequest) {
+	request.Model = strings.TrimSpace(request.Model)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.AspectRatio = strings.TrimSpace(request.AspectRatio)
+	request.ResponseFormat = strings.TrimSpace(request.ResponseFormat)
+
+	if request.Style != nil {
+		style := *request.Style
+		style.StyleType = strings.TrimSpace(style.StyleType)
+		request.Style = &style
+	}
+
+	if len(request.SubjectReferences) == 0 {
+		return
+	}
+
+	references := make([]ImageSubjectReference, 0, len(request.SubjectReferences))
+	for _, reference := range request.SubjectReferences {
+		reference.Type = strings.TrimSpace(reference.Type)
+		reference.ImageFile = strings.TrimSpace(reference.ImageFile)
+		references = append(references, reference)
+	}
+	request.SubjectReferences = references
+}
+
 func validateImageTextToImageRequest(request ImageTextToImageRequest) error {
-	if request.Model == "" {
-		return errors.New("image text-to-image request model is empty")
+	return validateImageGenerationFields("image text-to-image", imageGenerationValidationFields{
+		Model:          request.Model,
+		Prompt:         request.Prompt,
+		Style:          request.Style,
+		Width:          request.Width,
+		Height:         request.Height,
+		N:              request.N,
+		ResponseFormat: request.ResponseFormat,
+	})
+}
+
+func validateImageImageToImageRequest(request ImageImageToImageRequest) error {
+	if err := validateImageGenerationFields("image image-to-image", imageGenerationValidationFields{
+		Model:          request.Model,
+		Prompt:         request.Prompt,
+		Style:          request.Style,
+		Width:          request.Width,
+		Height:         request.Height,
+		N:              request.N,
+		ResponseFormat: request.ResponseFormat,
+	}); err != nil {
+		return err
 	}
-	if request.Prompt == "" {
-		return errors.New("image text-to-image request prompt is empty")
+
+	if len(request.SubjectReferences) == 0 {
+		return errors.New("image image-to-image request subject_reference is empty")
 	}
-	if request.Style != nil && request.Style.StyleType == "" {
-		return errors.New("image text-to-image request style_type is empty")
-	}
-	if request.Style != nil && request.Style.StyleWeight != nil && (*request.Style.StyleWeight <= 0 || *request.Style.StyleWeight > 1) {
-		return fmt.Errorf("image text-to-image request style_weight must be greater than 0 and no more than 1: %g", *request.Style.StyleWeight)
-	}
-	if (request.Width == nil) != (request.Height == nil) {
-		return errors.New("image text-to-image request width and height must be provided together")
-	}
-	if request.Width != nil {
-		if err := validateImageDimension("width", *request.Width); err != nil {
-			return err
+	for index, reference := range request.SubjectReferences {
+		if reference.Type == "" {
+			return fmt.Errorf("image image-to-image request subject_reference[%d].type is empty", index)
 		}
-		if err := validateImageDimension("height", *request.Height); err != nil {
-			return err
+		if reference.ImageFile == "" {
+			return fmt.Errorf("image image-to-image request subject_reference[%d].image_file is empty", index)
 		}
-	}
-	if request.N != nil && (*request.N < 1 || *request.N > 9) {
-		return fmt.Errorf("image text-to-image request n must be between 1 and 9: %d", *request.N)
-	}
-	if request.ResponseFormat != "" && request.ResponseFormat != "url" && request.ResponseFormat != "base64" {
-		return fmt.Errorf("image text-to-image request response_format must be url or base64: %s", request.ResponseFormat)
 	}
 
 	return nil
 }
 
-func validateImageDimension(name string, value int) error {
+type imageGenerationValidationFields struct {
+	Model          string
+	Prompt         string
+	Style          *ImageStyle
+	Width          *int
+	Height         *int
+	N              *int
+	ResponseFormat string
+}
+
+func validateImageGenerationFields(prefix string, fields imageGenerationValidationFields) error {
+	if fields.Model == "" {
+		return fmt.Errorf("%s request model is empty", prefix)
+	}
+	if fields.Prompt == "" {
+		return fmt.Errorf("%s request prompt is empty", prefix)
+	}
+	if fields.Style != nil && fields.Style.StyleType == "" {
+		return fmt.Errorf("%s request style_type is empty", prefix)
+	}
+	if fields.Style != nil && fields.Style.StyleWeight != nil && (*fields.Style.StyleWeight <= 0 || *fields.Style.StyleWeight > 1) {
+		return fmt.Errorf("%s request style_weight must be greater than 0 and no more than 1: %g", prefix, *fields.Style.StyleWeight)
+	}
+	if (fields.Width == nil) != (fields.Height == nil) {
+		return fmt.Errorf("%s request width and height must be provided together", prefix)
+	}
+	if fields.Width != nil {
+		if err := validateImageDimension(prefix, "width", *fields.Width); err != nil {
+			return err
+		}
+		if err := validateImageDimension(prefix, "height", *fields.Height); err != nil {
+			return err
+		}
+	}
+	if fields.N != nil && (*fields.N < 1 || *fields.N > 9) {
+		return fmt.Errorf("%s request n must be between 1 and 9: %d", prefix, *fields.N)
+	}
+	if fields.ResponseFormat != "" && fields.ResponseFormat != "url" && fields.ResponseFormat != "base64" {
+		return fmt.Errorf("%s request response_format must be url or base64: %s", prefix, fields.ResponseFormat)
+	}
+
+	return nil
+}
+
+func validateImageDimension(prefix string, name string, value int) error {
 	if value < 512 || value > 2048 {
-		return fmt.Errorf("image text-to-image request %s must be between 512 and 2048: %d", name, value)
+		return fmt.Errorf("%s request %s must be between 512 and 2048: %d", prefix, name, value)
 	}
 	if value%8 != 0 {
-		return fmt.Errorf("image text-to-image request %s must be a multiple of 8: %d", name, value)
+		return fmt.Errorf("%s request %s must be a multiple of 8: %d", prefix, name, value)
 	}
 
 	return nil

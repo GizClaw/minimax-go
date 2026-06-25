@@ -2,8 +2,8 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/image-generation-i2i.md
 - Endpoint: `POST /v1/image_generation`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `image.go`, `image_test.go`, `examples/image/`
 
 ## Purpose
 
@@ -11,9 +11,13 @@ Generate images from text plus reference image input.
 
 ## Development notes
 
-Implement with the same `ImageService` used by text-to-image. Model image
-inputs explicitly rather than using `map[string]any` for stable fields, and
-reuse the existing `ImageGenerationResponse` mapping when the response shape
-matches T2I.
+Implemented as `Client.Image.GenerateImageToImage`.
 
-This remains a planned API after the T2I implementation.
+The SDK reuses the existing image generation response mapping and transport
+behavior. Subject references are modeled as `ImageSubjectReference` values and
+sent through the official `subject_reference` wire field with `type` and
+`image_file`.
+
+The method validates required `model`, `prompt`, and subject reference fields
+client-side, then reuses the same dimension, `n`, style, and response-format
+validation semantics as text-to-image.

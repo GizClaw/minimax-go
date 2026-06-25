@@ -37,6 +37,7 @@ type options struct {
 	responseFormat  string
 	seed            int64
 	n               int
+	subjectRefs     subjectReferenceFlags
 	promptOptimizer bool
 	aigcWatermark   bool
 	outputDir       string
@@ -95,6 +96,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 	fs.StringVar(&opts.responseFormat, "response-format", opts.responseFormat, "Response format: url or base64")
 	fs.Int64Var(&opts.seed, "seed", opts.seed, "Optional deterministic seed")
 	fs.IntVar(&opts.n, "n", opts.n, "Number of images, 1..9")
+	fs.Var(&opts.subjectRefs, "subject-reference", "Image-to-image subject reference as type=image_file; repeat for multiple references")
 	fs.BoolVar(&opts.promptOptimizer, "prompt-optimizer", opts.promptOptimizer, "Enable MiniMax prompt optimizer")
 	fs.BoolVar(&opts.aigcWatermark, "aigc-watermark", opts.aigcWatermark, "Add AIGC watermark")
 	fs.StringVar(&opts.outputDir, "output-dir", opts.outputDir, "Optional directory for base64 image outputs")
@@ -107,6 +109,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		fmt.Fprintf(fs.Output(), "\nNotes:\n")
 		fmt.Fprintf(fs.Output(), "  - default response format is url; signed URLs are temporary\n")
 		fmt.Fprintf(fs.Output(), "  - use -response-format base64 with -output-dir to save returned images\n")
+		fmt.Fprintf(fs.Output(), "  - use -subject-reference character=https://example.com/ref.png to run image-to-image\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -152,6 +155,62 @@ func run(opts options, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
 	defer cancel()
 
+	response, err := generateImage(ctx, client, opts)
+	if err != nil {
+		return err
+	}
+
+	if opts.asJSON {
+		payload, marshalErr := json.MarshalIndent(response, "", "  ")
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal response: %w", marshalErr)
+		}
+		fmt.Fprintln(out, string(payload))
+	}
+
+	printResponseSummary(out, response)
+	if opts.outputDir != "" && len(response.ImageBase64) > 0 {
+		if err := saveBase64Images(response.ImageBase64, opts.outputDir, out); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func generateImage(ctx context.Context, client *minimax.Client, opts options) (*minimax.ImageGenerationResponse, error) {
+	if len(opts.subjectRefs) > 0 {
+		request := minimax.ImageImageToImageRequest{
+			Model:             opts.model,
+			Prompt:            opts.prompt,
+			SubjectReferences: opts.subjectRefs.ImageSubjectReferences(),
+			AspectRatio:       opts.aspectRatio,
+			ResponseFormat:    opts.responseFormat,
+			N:                 intPtr(opts.n),
+			PromptOptimizer:   boolPtr(opts.promptOptimizer),
+			AIGCWatermark:     boolPtr(opts.aigcWatermark),
+		}
+		if opts.styleType != "" {
+			request.Style = &minimax.ImageStyle{StyleType: opts.styleType}
+			if opts.styleWeight > 0 {
+				request.Style.StyleWeight = floatPtr(opts.styleWeight)
+			}
+		}
+		if opts.width != 0 {
+			request.Width = intPtr(opts.width)
+			request.Height = intPtr(opts.height)
+		}
+		if opts.seed != 0 {
+			request.Seed = int64Ptr(opts.seed)
+		}
+
+		response, err := client.Image.GenerateImageToImage(ctx, request)
+		if err != nil {
+			return nil, fmt.Errorf("Image.GenerateImageToImage failed: %w", err)
+		}
+		return response, nil
+	}
+
 	request := minimax.ImageTextToImageRequest{
 		Model:           opts.model,
 		Prompt:          opts.prompt,
@@ -177,25 +236,9 @@ func run(opts options, out io.Writer) error {
 
 	response, err := client.Image.GenerateTextToImage(ctx, request)
 	if err != nil {
-		return fmt.Errorf("Image.GenerateTextToImage failed: %w", err)
+		return nil, fmt.Errorf("Image.GenerateTextToImage failed: %w", err)
 	}
-
-	if opts.asJSON {
-		payload, marshalErr := json.MarshalIndent(response, "", "  ")
-		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal response: %w", marshalErr)
-		}
-		fmt.Fprintln(out, string(payload))
-	}
-
-	printResponseSummary(out, response)
-	if opts.outputDir != "" && len(response.ImageBase64) > 0 {
-		if err := saveBase64Images(response.ImageBase64, opts.outputDir, out); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return response, nil
 }
 
 func printResponseSummary(out io.Writer, response *minimax.ImageGenerationResponse) {
@@ -313,6 +356,58 @@ func envInt64OrDefault(key string, fallback int64) int64 {
 		return fallback
 	}
 	return parsed
+}
+
+type subjectReferenceFlags []minimax.ImageSubjectReference
+
+func (f *subjectReferenceFlags) String() string {
+	if f == nil || len(*f) == 0 {
+		return ""
+	}
+
+	values := make([]string, 0, len(*f))
+	for _, reference := range *f {
+		values = append(values, reference.Type+"="+reference.ImageFile)
+	}
+	return strings.Join(values, ",")
+}
+
+func (f *subjectReferenceFlags) Set(value string) error {
+	reference, err := parseSubjectReference(value)
+	if err != nil {
+		return err
+	}
+	*f = append(*f, reference)
+	return nil
+}
+
+func (f subjectReferenceFlags) ImageSubjectReferences() []minimax.ImageSubjectReference {
+	if len(f) == 0 {
+		return nil
+	}
+
+	references := make([]minimax.ImageSubjectReference, len(f))
+	copy(references, f)
+	return references
+}
+
+func parseSubjectReference(value string) (minimax.ImageSubjectReference, error) {
+	value = strings.TrimSpace(value)
+	referenceType, imageFile, ok := strings.Cut(value, "=")
+	if !ok {
+		return minimax.ImageSubjectReference{}, errors.New("subject-reference must use type=image_file")
+	}
+
+	referenceType = strings.TrimSpace(referenceType)
+	imageFile = strings.TrimSpace(imageFile)
+	if referenceType == "" {
+		return minimax.ImageSubjectReference{}, errors.New("subject-reference type is empty")
+	}
+	if imageFile == "" {
+		return minimax.ImageSubjectReference{}, errors.New("subject-reference image_file is empty")
+	}
+
+	return minimax.ImageSubjectReference{Type: referenceType, ImageFile: imageFile}, nil
 }
 
 func boolPtr(value bool) *bool {

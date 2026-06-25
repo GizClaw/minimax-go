@@ -19,6 +19,7 @@ Go SDK and examples for MiniMax APIs.
   - voice clone
 - Image APIs
   - text-to-image generation
+  - image-to-image generation
 - Video APIs
   - text-to-video task submit/query
 
@@ -36,6 +37,7 @@ Implemented:
 - [x] Voice list: `Voice.ListVoices` queries available system, cloned, and generated voices.
 - [x] Voice design: `Voice.DesignVoice` creates a custom voice from a prompt and preview text.
 - [x] Image T2I: `Image.GenerateTextToImage` generates images from text prompts.
+- [x] Image I2I: `Image.GenerateImageToImage` generates images from prompts and subject references.
 - [x] Video T2V create: `Video.CreateTextToVideo` creates async text-to-video tasks.
 - [x] Video generation query: `Video.GetTask` queries async video task status and generated file IDs.
 
@@ -50,7 +52,6 @@ Partially implemented:
 Planned:
 
 - [ ] Voice delete API.
-- [ ] Image generation I2I API.
 - [ ] Music APIs: lyrics generation, music cover preprocess, and music generation.
 - [ ] Remaining video generation APIs: image-to-video, first-last-frame, subject-reference, and video agent tasks.
 - [ ] Text and model APIs: OpenAI/Anthropic-compatible chat, Responses, token estimation, and model list/retrieve endpoints.
