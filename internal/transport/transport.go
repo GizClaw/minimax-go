@@ -90,6 +90,17 @@ type UploadRequest struct {
 	FileData        []byte
 }
 
+type WebSocketRequest struct {
+	Path    string
+	Query   url.Values
+	Headers http.Header
+}
+
+type WebSocketDialConfig struct {
+	URL    string
+	Header http.Header
+}
+
 func New(config Config) (*Client, error) {
 	retry := withRetryDefaults(config.Retry)
 
@@ -347,6 +358,31 @@ func (c *Client) UploadWithMeta(ctx context.Context, request UploadRequest, out 
 	}
 
 	return meta, nil
+}
+
+// BuildWebSocketDialConfig resolves a WebSocket endpoint and headers using the
+// same base URL, default headers, and bearer authorization as HTTP requests.
+func (c *Client) BuildWebSocketDialConfig(ctx context.Context, request WebSocketRequest) (*WebSocketDialConfig, error) {
+	req, err := c.buildRequest(ctx, http.MethodGet, request.Path, request.Query, nil)
+	if err != nil {
+		return nil, err
+	}
+	mergeHeaders(req.Header, request.Headers)
+
+	switch req.URL.Scheme {
+	case "https":
+		req.URL.Scheme = "wss"
+	case "http":
+		req.URL.Scheme = "ws"
+	case "ws", "wss":
+	default:
+		return nil, fmt.Errorf("unsupported websocket URL scheme %q", req.URL.Scheme)
+	}
+
+	return &WebSocketDialConfig{
+		URL:    req.URL.String(),
+		Header: req.Header.Clone(),
+	}, nil
 }
 
 func (c *Client) openRawAttempt(ctx context.Context, method string, request RawRequest) (*RawResponse, error) {

@@ -21,37 +21,52 @@ const (
 )
 
 type asyncOptions struct {
-	apiKey       string
-	baseURL      string
-	taskID       string
-	text         string
-	textFileID   string
-	model        string
-	voiceID      string
-	speed        *float64
-	volume       *float64
-	timeout      time.Duration
-	pollInterval time.Duration
-	wait         bool
-	noWait       bool
+	apiKey        string
+	baseURL       string
+	taskID        string
+	text          string
+	textFileID    string
+	model         string
+	voiceID       string
+	speed         *float64
+	volume        *float64
+	languageBoost string
+	outputFormat  string
+	audioFormat   string
+	sampleRate    *int
+	bitrate       *int
+	channel       *int
+	timeout       time.Duration
+	pollInterval  time.Duration
+	wait          bool
+	noWait        bool
 }
 
 type asyncDefaults struct {
-	apiKey            string
-	baseURL           string
-	taskID            string
-	text              string
-	textFileID        string
-	model             string
-	voiceID           string
-	speed             float64
-	volume            float64
-	speedSetByEnv     bool
-	volumeSetByEnv    bool
-	timeout           time.Duration
-	pollInterval      time.Duration
-	wait              bool
-	noWaitFlagDefault bool
+	apiKey             string
+	baseURL            string
+	taskID             string
+	text               string
+	textFileID         string
+	model              string
+	voiceID            string
+	speed              float64
+	volume             float64
+	speedSetByEnv      bool
+	volumeSetByEnv     bool
+	languageBoost      string
+	outputFormat       string
+	audioFormat        string
+	sampleRate         int
+	bitrate            int
+	channel            int
+	sampleRateSetByEnv bool
+	bitrateSetByEnv    bool
+	channelSetByEnv    bool
+	timeout            time.Duration
+	pollInterval       time.Duration
+	wait               bool
+	noWaitFlagDefault  bool
 }
 
 func runAsyncCommand(args []string, stdout, stderr io.Writer) error {
@@ -167,6 +182,15 @@ func parseAsyncOptions(args []string, out io.Writer) (asyncOptions, error) {
 	fs.StringVar(&opts.voiceID, "voice-id", defaults.voiceID, "Voice ID for submit mode (optional; some regions require this)")
 	fs.Float64Var(&speedValue, "speed", defaults.speed, "Speech speed for submit mode (optional)")
 	fs.Float64Var(&volumeValue, "volume", defaults.volume, "Speech volume for submit mode (optional)")
+	fs.StringVar(&opts.languageBoost, "language-boost", defaults.languageBoost, "Language boost value for submit mode, e.g. English or auto")
+	fs.StringVar(&opts.outputFormat, "output-format", defaults.outputFormat, "Output format for submit mode: hex or url")
+	fs.StringVar(&opts.audioFormat, "audio-format", defaults.audioFormat, "Audio format for submit mode, e.g. mp3/wav/flac")
+	sampleRateValue := defaults.sampleRate
+	bitrateValue := defaults.bitrate
+	channelValue := defaults.channel
+	fs.IntVar(&sampleRateValue, "sample-rate", defaults.sampleRate, "Audio sample rate for submit mode")
+	fs.IntVar(&bitrateValue, "bitrate", defaults.bitrate, "Audio bitrate for submit mode")
+	fs.IntVar(&channelValue, "channel", defaults.channel, "Audio channel count for submit mode")
 	fs.DurationVar(&opts.timeout, "timeout", defaults.timeout, "Total timeout for submit/query workflow")
 	fs.DurationVar(&opts.pollInterval, "poll-interval", defaults.pollInterval, "Polling interval when wait=true")
 	fs.BoolVar(&opts.wait, "wait", defaults.wait, "Wait/poll until terminal status")
@@ -211,21 +235,36 @@ func parseAsyncOptions(args []string, out io.Writer) (asyncOptions, error) {
 		volume := volumeValue
 		opts.volume = &volume
 	}
+	if defaults.sampleRateSetByEnv || flagWasSet(fs, "sample-rate") {
+		sampleRate := sampleRateValue
+		opts.sampleRate = &sampleRate
+	}
+	if defaults.bitrateSetByEnv || flagWasSet(fs, "bitrate") {
+		bitrate := bitrateValue
+		opts.bitrate = &bitrate
+	}
+	if defaults.channelSetByEnv || flagWasSet(fs, "channel") {
+		channel := channelValue
+		opts.channel = &channel
+	}
 
 	return opts, nil
 }
 
 func loadAsyncDefaults() (asyncDefaults, error) {
 	defaults := asyncDefaults{
-		apiKey:       os.Getenv("MINIMAX_API_KEY"),
-		baseURL:      envOrDefault("MINIMAX_BASE_URL", exampleDefaultBaseURL),
-		taskID:       strings.TrimSpace(envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_TASK_ID", "MINIMAX_SPEECH_ASYNC_TASK_ID"}, "")),
-		text:         envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_TEXT", "MINIMAX_SPEECH_TEXT"}, asyncDefaultText),
-		textFileID:   os.Getenv("MINIMAX_SPEECH_ASYNC_TEXT_FILE_ID"),
-		model:        envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_MODEL", "MINIMAX_SPEECH_MODEL"}, asyncDefaultModel),
-		voiceID:      envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_VOICE_ID", "MINIMAX_SPEECH_VOICE_ID"}, ""),
-		timeout:      envDurationOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_TIMEOUT", "MINIMAX_SPEECH_TIMEOUT"}, asyncDefaultTimeout),
-		pollInterval: envDurationOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_POLL_INTERVAL", "MINIMAX_SPEECH_TASK_POLL_INTERVAL"}, asyncDefaultPollInterval),
+		apiKey:        os.Getenv("MINIMAX_API_KEY"),
+		baseURL:       envOrDefault("MINIMAX_BASE_URL", exampleDefaultBaseURL),
+		taskID:        strings.TrimSpace(envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_TASK_ID", "MINIMAX_SPEECH_ASYNC_TASK_ID"}, "")),
+		text:          envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_TEXT", "MINIMAX_SPEECH_TEXT"}, asyncDefaultText),
+		textFileID:    os.Getenv("MINIMAX_SPEECH_ASYNC_TEXT_FILE_ID"),
+		model:         envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_MODEL", "MINIMAX_SPEECH_MODEL"}, asyncDefaultModel),
+		voiceID:       envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_VOICE_ID", "MINIMAX_SPEECH_VOICE_ID"}, ""),
+		languageBoost: envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_LANGUAGE_BOOST", "MINIMAX_SPEECH_LANGUAGE_BOOST"}, ""),
+		outputFormat:  envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_OUTPUT_FORMAT", "MINIMAX_SPEECH_OUTPUT_FORMAT"}, ""),
+		audioFormat:   envOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_AUDIO_FORMAT", "MINIMAX_SPEECH_AUDIO_FORMAT"}, ""),
+		timeout:       envDurationOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_TIMEOUT", "MINIMAX_SPEECH_TIMEOUT"}, asyncDefaultTimeout),
+		pollInterval:  envDurationOrDefaultFromKeys([]string{"MINIMAX_SPEECH_ASYNC_POLL_INTERVAL", "MINIMAX_SPEECH_TASK_POLL_INTERVAL"}, asyncDefaultPollInterval),
 	}
 
 	speed, speedSetByEnv, err := optionalEnvFloat64FromKeys("MINIMAX_SPEECH_ASYNC_SPEED", "MINIMAX_SPEECH_SPEED")
@@ -247,6 +286,27 @@ func loadAsyncDefaults() (asyncDefaults, error) {
 	}
 	defaults.volume = volume
 	defaults.volumeSetByEnv = volumeSetByEnv
+
+	sampleRate, sampleRateSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_ASYNC_SAMPLE_RATE", "MINIMAX_SPEECH_SAMPLE_RATE")
+	if err != nil {
+		return asyncDefaults{}, fmt.Errorf("invalid speech sample rate env: %w", err)
+	}
+	defaults.sampleRate = sampleRate
+	defaults.sampleRateSetByEnv = sampleRateSetByEnv
+
+	bitrate, bitrateSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_ASYNC_BITRATE", "MINIMAX_SPEECH_BITRATE")
+	if err != nil {
+		return asyncDefaults{}, fmt.Errorf("invalid speech bitrate env: %w", err)
+	}
+	defaults.bitrate = bitrate
+	defaults.bitrateSetByEnv = bitrateSetByEnv
+
+	channel, channelSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_ASYNC_CHANNEL", "MINIMAX_SPEECH_CHANNEL")
+	if err != nil {
+		return asyncDefaults{}, fmt.Errorf("invalid speech channel env: %w", err)
+	}
+	defaults.channel = channel
+	defaults.channelSetByEnv = channelSetByEnv
 
 	waitDefault, err := resolveAsyncWaitDefault()
 	if err != nil {
@@ -294,6 +354,9 @@ func trimAsyncOptions(opts *asyncOptions) {
 	opts.textFileID = strings.TrimSpace(opts.textFileID)
 	opts.model = strings.TrimSpace(opts.model)
 	opts.voiceID = strings.TrimSpace(opts.voiceID)
+	opts.languageBoost = strings.TrimSpace(opts.languageBoost)
+	opts.outputFormat = strings.TrimSpace(opts.outputFormat)
+	opts.audioFormat = strings.TrimSpace(opts.audioFormat)
 }
 
 func runAsync(opts asyncOptions, out io.Writer) error {
@@ -352,12 +415,15 @@ func runAsyncTaskMode(ctx context.Context, client *minimax.Client, opts asyncOpt
 
 func runAsyncSubmitMode(ctx context.Context, client *minimax.Client, opts asyncOptions, out io.Writer) error {
 	submitResp, err := client.SpeechAsync.SubmitAsync(ctx, minimax.SpeechAsyncSubmitRequest{
-		Model:      opts.model,
-		Text:       opts.text,
-		TextFileID: opts.textFileID,
-		VoiceID:    opts.voiceID,
-		Speed:      opts.speed,
-		Vol:        opts.volume,
+		Model:         opts.model,
+		Text:          opts.text,
+		TextFileID:    opts.textFileID,
+		VoiceID:       opts.voiceID,
+		Speed:         opts.speed,
+		Vol:           opts.volume,
+		LanguageBoost: opts.languageBoost,
+		OutputFormat:  opts.outputFormat,
+		AudioSetting:  newSpeechAudioSetting(opts.audioFormat, opts.sampleRate, opts.bitrate, opts.channel),
 	})
 	if err != nil {
 		return fmt.Errorf("SpeechAsync.SubmitAsync failed: %w", err)

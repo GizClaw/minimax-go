@@ -18,13 +18,23 @@ import (
 )
 
 type SpeechStreamRequest struct {
-	Model        string   `json:"model,omitempty"`
-	Text         string   `json:"text"`
-	VoiceID      string   `json:"voice_id,omitempty"`
-	Speed        *float64 `json:"speed,omitempty"`
-	Vol          *float64 `json:"vol,omitempty"`
-	Pitch        *int     `json:"pitch,omitempty"`
-	OutputFormat string   `json:"output_format,omitempty"`
+	Model                string                   `json:"model,omitempty"`
+	Text                 string                   `json:"text"`
+	VoiceID              string                   `json:"voice_id,omitempty"`
+	Speed                *float64                 `json:"speed,omitempty"`
+	Vol                  *float64                 `json:"vol,omitempty"`
+	Pitch                *int                     `json:"pitch,omitempty"`
+	Emotion              string                   `json:"emotion,omitempty"`
+	EnglishNormalization *bool                    `json:"english_normalization,omitempty"`
+	LatexRead            *bool                    `json:"latex_read,omitempty"`
+	OutputFormat         string                   `json:"output_format,omitempty"`
+	AudioSetting         *SpeechAudioSetting      `json:"audio_setting,omitempty"`
+	PronunciationDict    *SpeechPronunciationDict `json:"pronunciation_dict,omitempty"`
+	TimberWeights        []SpeechTimberWeight     `json:"timbre_weights,omitempty"`
+	LanguageBoost        string                   `json:"language_boost,omitempty"`
+	VoiceModify          *SpeechVoiceModify       `json:"voice_modify,omitempty"`
+	SubtitleEnable       *bool                    `json:"subtitle_enable,omitempty"`
+	SubtitleType         string                   `json:"subtitle_type,omitempty"`
 }
 
 type SpeechChunk struct {
@@ -45,11 +55,18 @@ type SpeechStream struct {
 }
 
 type speechStreamWireRequest struct {
-	Model        string              `json:"model"`
-	Text         string              `json:"text"`
-	Stream       bool                `json:"stream"`
-	OutputFormat string              `json:"output_format,omitempty"`
-	VoiceSetting *speechVoiceSetting `json:"voice_setting,omitempty"`
+	Model             string                   `json:"model"`
+	Text              string                   `json:"text"`
+	Stream            bool                     `json:"stream"`
+	OutputFormat      string                   `json:"output_format,omitempty"`
+	VoiceSetting      *speechVoiceSetting      `json:"voice_setting,omitempty"`
+	AudioSetting      *speechAudioSettingWire  `json:"audio_setting,omitempty"`
+	PronunciationDict *SpeechPronunciationDict `json:"pronunciation_dict,omitempty"`
+	TimberWeights     []SpeechTimberWeight     `json:"timbre_weights,omitempty"`
+	LanguageBoost     string                   `json:"language_boost,omitempty"`
+	VoiceModify       *SpeechVoiceModify       `json:"voice_modify,omitempty"`
+	SubtitleEnable    *bool                    `json:"subtitle_enable,omitempty"`
+	SubtitleType      string                   `json:"subtitle_type,omitempty"`
 }
 
 type speechStreamEventPayload struct {
@@ -101,6 +118,9 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 	request.Model = strings.TrimSpace(request.Model)
 	request.VoiceID = strings.TrimSpace(request.VoiceID)
 	request.OutputFormat = strings.TrimSpace(request.OutputFormat)
+	request.Emotion = strings.TrimSpace(request.Emotion)
+	request.LanguageBoost = strings.TrimSpace(request.LanguageBoost)
+	request.SubtitleType = strings.TrimSpace(request.SubtitleType)
 
 	if request.Text == "" {
 		return nil, errors.New("speech stream request text is empty")
@@ -124,18 +144,29 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 	request.OutputFormat = defaultSpeechOutputFormat
 
 	wireReq := speechStreamWireRequest{
-		Model:        request.Model,
-		Text:         request.Text,
-		Stream:       true,
-		OutputFormat: request.OutputFormat,
+		Model:             request.Model,
+		Text:              request.Text,
+		Stream:            true,
+		OutputFormat:      request.OutputFormat,
+		AudioSetting:      speechAudioSettingForHTTP(request.AudioSetting),
+		PronunciationDict: request.PronunciationDict,
+		TimberWeights:     trimSpeechTimberWeights(request.TimberWeights),
+		LanguageBoost:     request.LanguageBoost,
+		VoiceModify:       request.VoiceModify,
+		SubtitleEnable:    request.SubtitleEnable,
+		SubtitleType:      request.SubtitleType,
 	}
 
-	if request.VoiceID != "" || request.Speed != nil || request.Vol != nil || request.Pitch != nil {
+	if request.VoiceID != "" || request.Speed != nil || request.Vol != nil || request.Pitch != nil ||
+		request.Emotion != "" || request.EnglishNormalization != nil || request.LatexRead != nil {
 		wireReq.VoiceSetting = &speechVoiceSetting{
-			VoiceID: request.VoiceID,
-			Speed:   request.Speed,
-			Vol:     request.Vol,
-			Pitch:   request.Pitch,
+			VoiceID:              request.VoiceID,
+			Speed:                request.Speed,
+			Vol:                  request.Vol,
+			Pitch:                request.Pitch,
+			Emotion:              request.Emotion,
+			EnglishNormalization: request.EnglishNormalization,
+			LatexRead:            request.LatexRead,
 		}
 	}
 

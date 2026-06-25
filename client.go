@@ -42,6 +42,7 @@ func NewClient(config Config) (*Client, error) {
 		transport:      trans,
 		endpoint:       defaultSpeechSynthesizePath,
 		streamEndpoint: defaultSpeechStreamPath,
+		websocketPath:  defaultSpeechWebSocketPath,
 	}
 	client.SpeechAsync = &SpeechAsyncService{
 		transport:      trans,
@@ -72,6 +73,7 @@ func NewClient(config Config) (*Client, error) {
 		endpoint:       defaultVoiceListPath,
 		designEndpoint: defaultVoiceDesignPath,
 		cloneEndpoint:  defaultVoiceClonePath,
+		deleteEndpoint: defaultVoiceDeletePath,
 	}
 	client.Video = &VideoService{
 		transport:      trans,

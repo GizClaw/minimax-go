@@ -4,6 +4,7 @@
 
 - `async`: submit async TTS **or** query existing `task_id` (with `-wait` / `-no-wait`)
 - `stream`: stream TTS chunks and merge to a local file
+- `websocket`: official WebSocket T2A protocol and merge received audio chunks
 - `http`: synchronous HTTP TTS and write local file
 
 `task` is kept as a backward-compatible alias of `async` task query mode.
@@ -40,7 +41,16 @@ go run ./examples/speech async \
   -wait
 ```
 
-### 4) HTTP (sync)
+### 4) WebSocket
+
+```bash
+go run ./examples/speech websocket \
+  -text "hello websocket" \
+  -voice-id "male-qn-qingse" \
+  -output /tmp/speech_websocket_output.audio
+```
+
+### 5) HTTP (sync)
 
 ```bash
 go run ./examples/speech http \
@@ -49,12 +59,29 @@ go run ./examples/speech http \
   -output /tmp/speech_output.audio
 ```
 
+HTTP, async submit, and WebSocket commands expose the stable official speech fields:
+
+```bash
+go run ./examples/speech http \
+  -text "hello with explicit audio settings" \
+  -voice-id "male-qn-qingse" \
+  -language-boost English \
+  -output-format url \
+  -audio-format mp3 \
+  -sample-rate 32000 \
+  -bitrate 128000 \
+  -channel 1
+```
+
+`-output-format` is available for HTTP and async submit. Audio setting flags are available for HTTP, async submit, and WebSocket.
+
 ## Show CLI help
 
 ```bash
 go run ./examples/speech -h
 go run ./examples/speech async -h
 go run ./examples/speech stream -h
+go run ./examples/speech websocket -h
 go run ./examples/speech http -h
 ```
 

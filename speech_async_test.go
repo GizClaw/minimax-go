@@ -634,6 +634,77 @@ func TestSpeechTask(t *testing.T) {
 	}
 }
 
+func TestSpeechAsyncSubmitOfficialFields(t *testing.T) {
+	t.Parallel()
+
+	sampleRate := 32000
+	bitrate := 128000
+	channel := 2
+	enabled := true
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode(request body) error = %v", err)
+		}
+
+		if payload["text_file_id"] != float64(12345) {
+			t.Fatalf("payload.text_file_id = %v, want numeric 12345", payload["text_file_id"])
+		}
+		if payload["output_format"] != "url" {
+			t.Fatalf("payload.output_format = %v, want url", payload["output_format"])
+		}
+		if payload["language_boost"] != "English" {
+			t.Fatalf("payload.language_boost = %v, want English", payload["language_boost"])
+		}
+
+		audioSetting := payload["audio_setting"].(map[string]any)
+		if audioSetting["audio_sample_rate"] != float64(sampleRate) {
+			t.Fatalf("audio_setting.audio_sample_rate = %v, want %d", audioSetting["audio_sample_rate"], sampleRate)
+		}
+		if audioSetting["sample_rate"] != nil {
+			t.Fatalf("audio_setting.sample_rate = %v, want omitted", audioSetting["sample_rate"])
+		}
+		if audioSetting["bitrate"] != float64(bitrate) || audioSetting["channel"] != float64(channel) {
+			t.Fatalf("audio_setting = %v, want bitrate/channel", audioSetting)
+		}
+
+		voiceSetting := payload["voice_setting"].(map[string]any)
+		if voiceSetting["latex_read"] != true {
+			t.Fatalf("voice_setting.latex_read = %v, want true", voiceSetting["latex_read"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"task_id":95157322514444,"file_id":95157322514496,"usage_characters":101}`))
+	}))
+	defer srv.Close()
+
+	client := newSpeechAsyncTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+	resp, err := client.SpeechAsync.SubmitAsync(context.Background(), SpeechAsyncSubmitRequest{
+		Model:        "speech-2.8-hd",
+		TextFileID:   "12345",
+		VoiceID:      "voice-1",
+		LatexRead:    &enabled,
+		OutputFormat: "url",
+		AudioSetting: &SpeechAudioSetting{
+			SampleRate: &sampleRate,
+			Bitrate:    &bitrate,
+			Format:     "mp3",
+			Channel:    &channel,
+		},
+		PronunciationDict: &SpeechPronunciationDict{Tone: []string{"dangerous/危险"}},
+		LanguageBoost:     "English",
+		SubtitleEnable:    &enabled,
+		SubtitleType:      "sentence",
+	})
+	if err != nil {
+		t.Fatalf("SubmitAsync() error = %v, want nil", err)
+	}
+	if resp.TaskID != "95157322514444" || resp.FileID != "95157322514496" {
+		t.Fatalf("resp = %+v, want task/file IDs", resp)
+	}
+}
+
 func newSpeechAsyncTestClient(t *testing.T, srv *httptest.Server, retry transport.RetryConfig) *Client {
 	t.Helper()
 

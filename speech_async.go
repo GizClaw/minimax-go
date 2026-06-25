@@ -41,13 +41,23 @@ type SpeechAsyncService struct {
 }
 
 type SpeechAsyncSubmitRequest struct {
-	Model      string   `json:"model,omitempty"`
-	Text       string   `json:"text,omitempty"`
-	TextFileID string   `json:"text_file_id,omitempty"`
-	VoiceID    string   `json:"voice_id,omitempty"`
-	Speed      *float64 `json:"speed,omitempty"`
-	Vol        *float64 `json:"vol,omitempty"`
-	Pitch      *int     `json:"pitch,omitempty"`
+	Model                string                   `json:"model,omitempty"`
+	Text                 string                   `json:"text,omitempty"`
+	TextFileID           string                   `json:"text_file_id,omitempty"`
+	VoiceID              string                   `json:"voice_id,omitempty"`
+	Speed                *float64                 `json:"speed,omitempty"`
+	Vol                  *float64                 `json:"vol,omitempty"`
+	Pitch                *int                     `json:"pitch,omitempty"`
+	Emotion              string                   `json:"emotion,omitempty"`
+	EnglishNormalization *bool                    `json:"english_normalization,omitempty"`
+	LatexRead            *bool                    `json:"latex_read,omitempty"`
+	OutputFormat         string                   `json:"output_format,omitempty"`
+	AudioSetting         *SpeechAudioSetting      `json:"audio_setting,omitempty"`
+	PronunciationDict    *SpeechPronunciationDict `json:"pronunciation_dict,omitempty"`
+	LanguageBoost        string                   `json:"language_boost,omitempty"`
+	VoiceModify          *SpeechVoiceModify       `json:"voice_modify,omitempty"`
+	SubtitleEnable       *bool                    `json:"subtitle_enable,omitempty"`
+	SubtitleType         string                   `json:"subtitle_type,omitempty"`
 }
 
 type SpeechAsyncSubmitResponse struct {
@@ -93,10 +103,17 @@ type SpeechTaskStatusResponse struct {
 }
 
 type speechAsyncSubmitWireRequest struct {
-	Model        string              `json:"model"`
-	Text         string              `json:"text,omitempty"`
-	TextFileID   string              `json:"text_file_id,omitempty"`
-	VoiceSetting *speechVoiceSetting `json:"voice_setting,omitempty"`
+	Model             string                   `json:"model"`
+	Text              string                   `json:"text,omitempty"`
+	TextFileID        numericStringID          `json:"text_file_id,omitempty"`
+	OutputFormat      string                   `json:"output_format,omitempty"`
+	VoiceSetting      *speechVoiceSetting      `json:"voice_setting,omitempty"`
+	AudioSetting      *speechAudioSettingWire  `json:"audio_setting,omitempty"`
+	PronunciationDict *SpeechPronunciationDict `json:"pronunciation_dict,omitempty"`
+	LanguageBoost     string                   `json:"language_boost,omitempty"`
+	VoiceModify       *SpeechVoiceModify       `json:"voice_modify,omitempty"`
+	SubtitleEnable    *bool                    `json:"subtitle_enable,omitempty"`
+	SubtitleType      string                   `json:"subtitle_type,omitempty"`
 }
 
 type speechAsyncSubmitRawResponse struct {
@@ -220,6 +237,10 @@ func (s *SpeechAsyncService) SubmitAsync(ctx context.Context, request SpeechAsyn
 	request.Text = strings.TrimSpace(request.Text)
 	request.TextFileID = strings.TrimSpace(request.TextFileID)
 	request.VoiceID = strings.TrimSpace(request.VoiceID)
+	request.OutputFormat = strings.TrimSpace(request.OutputFormat)
+	request.Emotion = strings.TrimSpace(request.Emotion)
+	request.LanguageBoost = strings.TrimSpace(request.LanguageBoost)
+	request.SubtitleType = strings.TrimSpace(request.SubtitleType)
 
 	if request.Text == "" && request.TextFileID == "" {
 		return nil, errors.New("speech async submit request text and text_file_id are empty")
@@ -228,19 +249,33 @@ func (s *SpeechAsyncService) SubmitAsync(ctx context.Context, request SpeechAsyn
 	if request.Model == "" {
 		request.Model = defaultSpeechModel
 	}
-
-	wireRequest := speechAsyncSubmitWireRequest{
-		Model:      request.Model,
-		Text:       request.Text,
-		TextFileID: request.TextFileID,
+	if request.OutputFormat != "" && !isSupportedSpeechOutputFormat(request.OutputFormat) {
+		return nil, fmt.Errorf("speech async submit output format %q is not supported, only %q and %q are supported", request.OutputFormat, "hex", "url")
 	}
 
-	if request.VoiceID != "" || request.Speed != nil || request.Vol != nil || request.Pitch != nil {
+	wireRequest := speechAsyncSubmitWireRequest{
+		Model:             request.Model,
+		Text:              request.Text,
+		TextFileID:        numericStringID(request.TextFileID),
+		OutputFormat:      strings.ToLower(request.OutputFormat),
+		AudioSetting:      speechAudioSettingForAsync(request.AudioSetting),
+		PronunciationDict: request.PronunciationDict,
+		LanguageBoost:     request.LanguageBoost,
+		VoiceModify:       request.VoiceModify,
+		SubtitleEnable:    request.SubtitleEnable,
+		SubtitleType:      request.SubtitleType,
+	}
+
+	if request.VoiceID != "" || request.Speed != nil || request.Vol != nil || request.Pitch != nil ||
+		request.Emotion != "" || request.EnglishNormalization != nil || request.LatexRead != nil {
 		wireRequest.VoiceSetting = &speechVoiceSetting{
-			VoiceID: request.VoiceID,
-			Speed:   request.Speed,
-			Vol:     request.Vol,
-			Pitch:   request.Pitch,
+			VoiceID:              request.VoiceID,
+			Speed:                request.Speed,
+			Vol:                  request.Vol,
+			Pitch:                request.Pitch,
+			Emotion:              request.Emotion,
+			EnglishNormalization: request.EnglishNormalization,
+			LatexRead:            request.LatexRead,
 		}
 	}
 

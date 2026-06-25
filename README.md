@@ -11,12 +11,15 @@ Go SDK and examples for MiniMax APIs.
 - Speech APIs
   - synchronous HTTP TTS
   - streaming TTS
+  - official WebSocket TTS
   - async TTS task submit/query
 - File upload API
 - Voice APIs
   - list voices
   - voice design
   - voice clone
+  - voice delete
+  - typed clone/prompt audio uploads
 - Image APIs
   - text-to-image generation
   - image-to-image generation
@@ -43,6 +46,11 @@ Implemented:
 - [x] File delete: `File.Delete` deletes a stored file by file ID and purpose.
 - [x] Voice list: `Voice.ListVoices` queries available system, cloned, and generated voices.
 - [x] Voice design: `Voice.DesignVoice` creates a custom voice from a prompt and preview text.
+- [x] Voice delete: `Voice.DeleteVoice` deletes an owned generated/cloned voice by ID.
+- [x] Voice clone audio uploads: `Voice.UploadCloneAudio` and `Voice.UploadPromptAudio` wrap official file upload purposes.
+- [x] Speech T2A HTTP: `Speech.Synthesize` supports synchronous HTTP TTS with stable official audio, language, subtitle, and output fields.
+- [x] Speech T2A WebSocket: `Speech.OpenWebSocket` implements the official `/ws/v1/t2a_v2` task protocol separately from HTTP stream.
+- [x] Speech T2A async: `SpeechAsync.SubmitAsync` and `SpeechAsync.GetAsyncTask` support stable official create/query fields and metadata normalization.
 - [x] Image T2I: `Image.GenerateTextToImage` generates images from text prompts.
 - [x] Image I2I: `Image.GenerateImageToImage` generates images from prompts and subject references.
 - [x] Music lyrics generation: `Music.GenerateLyrics` writes or edits lyrics for music workflows.
@@ -56,16 +64,12 @@ Implemented:
 
 Partially implemented:
 
-- [ ] Speech T2A HTTP: `Speech.Synthesize` supports synchronous HTTP TTS with hex audio output; more official audio/output options still need to be exposed.
-- [ ] Speech T2A streaming: `Speech.OpenStream` provides an HTTP stream helper; the official WebSocket T2A protocol is not implemented yet.
-- [ ] Speech T2A async: `SpeechAsync.SubmitAsync` and `SpeechAsync.GetAsyncTask` are implemented; some official async fields and metadata still need a schema audit.
-- [ ] Voice clone: `Voice.CloneVoice` supports `audio_url` and `file_id`; dedicated prompt-audio helpers and full official clone fields are still missing.
-- [ ] Voice clone audio uploads: generic `File.Upload` can upload clone/prompt audio, but there are no dedicated typed helpers yet.
+- [ ] Speech T2A streaming: `Speech.OpenStream` remains an HTTP/SSE helper for source compatibility; use `Speech.OpenWebSocket` for the official WebSocket protocol.
+- [ ] Voice clone: `Voice.CloneVoice` supports `audio_url` and `file_id`; full official preview/prompt clone fields can be added separately.
 - [ ] Music streaming: `Music.Generate` rejects `stream=true`; official streaming music response handling is not implemented yet.
 
 Planned:
 
-- [ ] Voice delete API.
 - [ ] Remaining video generation APIs: video agent tasks.
 - [ ] Text and model APIs: OpenAI/Anthropic-compatible chat, Responses, token estimation, and model list/retrieve endpoints.
 
@@ -88,8 +92,12 @@ Check runnable examples:
 go run ./examples/speech -h
 go run ./examples/speech async -h
 go run ./examples/speech stream -h
+go run ./examples/speech websocket -h
 go run ./examples/speech http -h
 go run ./examples/voice/list -h
+go run ./examples/voice/clone -h
+go run ./examples/voice/upload -h
+go run ./examples/voice/delete -h
 go run ./examples/file -h
 go run ./examples/image -h
 go run ./examples/music -h

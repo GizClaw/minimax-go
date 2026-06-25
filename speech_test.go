@@ -348,6 +348,164 @@ func TestSpeechSynthesize(t *testing.T) {
 	})
 }
 
+func TestSpeechSynthesizeOfficialFields(t *testing.T) {
+	t.Parallel()
+
+	t.Run("serializes stable optional fields", func(t *testing.T) {
+		t.Parallel()
+
+		sampleRate := 32000
+		bitrate := 128000
+		channel := 1
+		pitch := 2
+		enabled := true
+		weight := 70
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode(request body) error = %v", err)
+			}
+
+			if payload["stream"] != false {
+				t.Fatalf("payload.stream = %v, want false", payload["stream"])
+			}
+			if payload["language_boost"] != "auto" {
+				t.Fatalf("payload.language_boost = %v, want auto", payload["language_boost"])
+			}
+
+			voiceSetting := payload["voice_setting"].(map[string]any)
+			if voiceSetting["emotion"] != "happy" {
+				t.Fatalf("voice_setting.emotion = %v, want happy", voiceSetting["emotion"])
+			}
+			if voiceSetting["english_normalization"] != true {
+				t.Fatalf("voice_setting.english_normalization = %v, want true", voiceSetting["english_normalization"])
+			}
+
+			audioSetting := payload["audio_setting"].(map[string]any)
+			if audioSetting["sample_rate"] != float64(sampleRate) || audioSetting["bitrate"] != float64(bitrate) || audioSetting["channel"] != float64(channel) {
+				t.Fatalf("audio_setting = %v, want sample_rate/bitrate/channel", audioSetting)
+			}
+			if audioSetting["format"] != "mp3" {
+				t.Fatalf("audio_setting.format = %v, want mp3", audioSetting["format"])
+			}
+
+			pronunciation := payload["pronunciation_dict"].(map[string]any)
+			if len(pronunciation["tone"].([]any)) != 1 {
+				t.Fatalf("pronunciation_dict.tone = %v, want one item", pronunciation["tone"])
+			}
+			weights := payload["timbre_weights"].([]any)
+			if gotWeight := weights[0].(map[string]any)["weight"]; gotWeight != float64(weight) {
+				t.Fatalf("timbre_weights[0].weight = %v, want %d", gotWeight, weight)
+			}
+			if payload["subtitle_enable"] != true {
+				t.Fatalf("subtitle_enable = %v, want true", payload["subtitle_enable"])
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"data":{"audio_hex":"48656c6c6f"}}`))
+		}))
+		defer srv.Close()
+
+		client, err := NewClient(Config{
+			BaseURL:    srv.URL,
+			HTTPClient: srv.Client(),
+			Retry:      transport.RetryConfig{MaxAttempts: 1},
+		})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v, want nil", err)
+		}
+
+		_, err = client.Speech.Synthesize(context.Background(), SpeechRequest{
+			Text:                 "hello",
+			VoiceID:              "voice-1",
+			Emotion:              "happy",
+			EnglishNormalization: &enabled,
+			AudioSetting: &SpeechAudioSetting{
+				SampleRate: &sampleRate,
+				Bitrate:    &bitrate,
+				Format:     "mp3",
+				Channel:    &channel,
+			},
+			PronunciationDict: &SpeechPronunciationDict{Tone: []string{"hello/hi"}},
+			TimberWeights:     []SpeechTimberWeight{{VoiceID: "voice-1", Weight: weight}},
+			LanguageBoost:     "auto",
+			SubtitleEnable:    &enabled,
+			SubtitleType:      "sentence",
+			Pitch:             &pitch,
+		})
+		if err != nil {
+			t.Fatalf("Synthesize() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("url output returns audio url", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"data":{"audio_url":"https://example.test/audio.mp3"},"trace_id":"trace-url"}`))
+		}))
+		defer srv.Close()
+
+		client, err := NewClient(Config{
+			BaseURL:    srv.URL,
+			HTTPClient: srv.Client(),
+			Retry:      transport.RetryConfig{MaxAttempts: 1},
+		})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v, want nil", err)
+		}
+
+		resp, err := client.Speech.Synthesize(context.Background(), SpeechRequest{
+			Text:         "hello",
+			OutputFormat: "url",
+		})
+		if err != nil {
+			t.Fatalf("Synthesize() error = %v, want nil", err)
+		}
+		if resp.AudioURL != "https://example.test/audio.mp3" {
+			t.Fatalf("resp.AudioURL = %q, want audio URL", resp.AudioURL)
+		}
+		if len(resp.Audio) != 0 {
+			t.Fatalf("len(resp.Audio) = %d, want 0 for url output", len(resp.Audio))
+		}
+	})
+
+	t.Run("url output accepts url in audio field", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"data":{"audio":"https://example.test/audio-from-audio-field.mp3"},"trace_id":"trace-url-audio"}`))
+		}))
+		defer srv.Close()
+
+		client, err := NewClient(Config{
+			BaseURL:    srv.URL,
+			HTTPClient: srv.Client(),
+			Retry:      transport.RetryConfig{MaxAttempts: 1},
+		})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v, want nil", err)
+		}
+
+		resp, err := client.Speech.Synthesize(context.Background(), SpeechRequest{
+			Text:         "hello",
+			OutputFormat: "url",
+		})
+		if err != nil {
+			t.Fatalf("Synthesize() error = %v, want nil", err)
+		}
+		if resp.AudioURL != "https://example.test/audio-from-audio-field.mp3" {
+			t.Fatalf("resp.AudioURL = %q, want URL from audio field", resp.AudioURL)
+		}
+		if len(resp.Audio) != 0 {
+			t.Fatalf("len(resp.Audio) = %d, want 0 for url output", len(resp.Audio))
+		}
+	})
+}
+
 func TestSpeechStream(t *testing.T) {
 	t.Parallel()
 

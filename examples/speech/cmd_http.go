@@ -20,15 +20,21 @@ const (
 )
 
 type httpOptions struct {
-	apiKey  string
-	baseURL string
-	text    string
-	model   string
-	voiceID string
-	speed   *float64
-	volume  *float64
-	timeout time.Duration
-	output  string
+	apiKey        string
+	baseURL       string
+	text          string
+	model         string
+	voiceID       string
+	speed         *float64
+	volume        *float64
+	languageBoost string
+	outputFormat  string
+	audioFormat   string
+	sampleRate    *int
+	bitrate       *int
+	channel       *int
+	timeout       time.Duration
+	output        string
 }
 
 func runHTTPCommand(args []string, stdout, stderr io.Writer) error {
@@ -69,12 +75,30 @@ func parseHTTPOptions(args []string, out io.Writer) (httpOptions, error) {
 
 	timeoutDefault := envDurationOrDefault("MINIMAX_SPEECH_TIMEOUT", 30*time.Second)
 	outputDefault := envOrDefault("MINIMAX_SPEECH_OUTPUT", httpDefaultOutFile)
+	languageBoostDefault := os.Getenv("MINIMAX_SPEECH_LANGUAGE_BOOST")
+	outputFormatDefault := envOrDefault("MINIMAX_SPEECH_OUTPUT_FORMAT", "hex")
+	audioFormatDefault := os.Getenv("MINIMAX_SPEECH_AUDIO_FORMAT")
+	sampleRateDefault, sampleRateSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_SAMPLE_RATE")
+	if err != nil {
+		return httpOptions{}, fmt.Errorf("invalid speech sample rate env: %w", err)
+	}
+	bitrateDefault, bitrateSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_BITRATE")
+	if err != nil {
+		return httpOptions{}, fmt.Errorf("invalid speech bitrate env: %w", err)
+	}
+	channelDefault, channelSetByEnv, err := optionalEnvIntFromKeys("MINIMAX_SPEECH_CHANNEL")
+	if err != nil {
+		return httpOptions{}, fmt.Errorf("invalid speech channel env: %w", err)
+	}
 
 	fs := flag.NewFlagSet("http", flag.ContinueOnError)
 	fs.SetOutput(out)
 
 	speedValue := speedDefault
 	volumeValue := volumeDefault
+	sampleRateValue := sampleRateDefault
+	bitrateValue := bitrateDefault
+	channelValue := channelDefault
 
 	fs.StringVar(&opts.apiKey, "api-key", apiKeyDefault, "Minimax API key (or env MINIMAX_API_KEY)")
 	fs.StringVar(&opts.baseURL, "base-url", baseURLDefault, "Minimax API base URL (env: MINIMAX_BASE_URL)")
@@ -83,6 +107,12 @@ func parseHTTPOptions(args []string, out io.Writer) (httpOptions, error) {
 	fs.StringVar(&opts.voiceID, "voice-id", voiceDefault, "Voice ID (optional, env: MINIMAX_SPEECH_VOICE_ID)")
 	fs.Float64Var(&speedValue, "speed", speedDefault, "Speech speed (optional, env: MINIMAX_SPEECH_SPEED)")
 	fs.Float64Var(&volumeValue, "volume", volumeDefault, "Speech volume (optional, env: MINIMAX_SPEECH_VOLUME)")
+	fs.StringVar(&opts.languageBoost, "language-boost", languageBoostDefault, "Language boost value, e.g. English or auto (env: MINIMAX_SPEECH_LANGUAGE_BOOST)")
+	fs.StringVar(&opts.outputFormat, "output-format", outputFormatDefault, "Output format: hex or url (env: MINIMAX_SPEECH_OUTPUT_FORMAT)")
+	fs.StringVar(&opts.audioFormat, "audio-format", audioFormatDefault, "Audio format, e.g. mp3/wav/flac (env: MINIMAX_SPEECH_AUDIO_FORMAT)")
+	fs.IntVar(&sampleRateValue, "sample-rate", sampleRateDefault, "Audio sample rate (env: MINIMAX_SPEECH_SAMPLE_RATE)")
+	fs.IntVar(&bitrateValue, "bitrate", bitrateDefault, "Audio bitrate (env: MINIMAX_SPEECH_BITRATE)")
+	fs.IntVar(&channelValue, "channel", channelDefault, "Audio channel count (env: MINIMAX_SPEECH_CHANNEL)")
 	fs.DurationVar(&opts.timeout, "timeout", timeoutDefault, "Request timeout (env: MINIMAX_SPEECH_TIMEOUT, e.g. 30s)")
 	fs.StringVar(&opts.output, "output", outputDefault, "Output audio file path (env: MINIMAX_SPEECH_OUTPUT)")
 
@@ -102,6 +132,9 @@ func parseHTTPOptions(args []string, out io.Writer) (httpOptions, error) {
 	opts.text = strings.TrimSpace(opts.text)
 	opts.model = strings.TrimSpace(opts.model)
 	opts.voiceID = strings.TrimSpace(opts.voiceID)
+	opts.languageBoost = strings.TrimSpace(opts.languageBoost)
+	opts.outputFormat = strings.TrimSpace(opts.outputFormat)
+	opts.audioFormat = strings.TrimSpace(opts.audioFormat)
 	opts.output = strings.TrimSpace(opts.output)
 
 	if opts.timeout <= 0 {
@@ -116,6 +149,18 @@ func parseHTTPOptions(args []string, out io.Writer) (httpOptions, error) {
 	if volumeSetByEnv || flagWasSet(fs, "volume") {
 		volume := volumeValue
 		opts.volume = &volume
+	}
+	if sampleRateSetByEnv || flagWasSet(fs, "sample-rate") {
+		sampleRate := sampleRateValue
+		opts.sampleRate = &sampleRate
+	}
+	if bitrateSetByEnv || flagWasSet(fs, "bitrate") {
+		bitrate := bitrateValue
+		opts.bitrate = &bitrate
+	}
+	if channelSetByEnv || flagWasSet(fs, "channel") {
+		channel := channelValue
+		opts.channel = &channel
 	}
 
 	return opts, nil
@@ -150,14 +195,22 @@ func runHTTP(opts httpOptions, out io.Writer) error {
 	defer cancel()
 
 	response, err := client.Speech.Synthesize(ctx, minimax.SpeechRequest{
-		Model:   opts.model,
-		Text:    opts.text,
-		VoiceID: opts.voiceID,
-		Speed:   opts.speed,
-		Vol:     opts.volume,
+		Model:         opts.model,
+		Text:          opts.text,
+		VoiceID:       opts.voiceID,
+		Speed:         opts.speed,
+		Vol:           opts.volume,
+		OutputFormat:  opts.outputFormat,
+		LanguageBoost: opts.languageBoost,
+		AudioSetting:  newSpeechAudioSetting(opts.audioFormat, opts.sampleRate, opts.bitrate, opts.channel),
 	})
 	if err != nil {
 		return fmt.Errorf("Speech.Synthesize failed: %w", err)
+	}
+
+	if response.AudioURL != "" {
+		fmt.Fprintf(out, "http synthesis succeeded, audio_url=%s\n", response.AudioURL)
+		return nil
 	}
 
 	if len(response.Audio) == 0 {
