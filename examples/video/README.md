@@ -1,7 +1,8 @@
 # Video Example
 
-`examples/video` demonstrates MiniMax text-to-video, image-to-video, and
-first-last-frame video task creation, task query, and the file retrieve handoff.
+`examples/video` demonstrates MiniMax text-to-video, image-to-video,
+first-last-frame, and subject-reference video task creation, task query, and the
+file retrieve handoff.
 
 ## Quick start
 
@@ -24,6 +25,19 @@ go run ./examples/video \
 
 When the task succeeds, the command prints the generated `file_id` and any
 retrieved `download_url`.
+
+## Subject-reference video
+
+```bash
+go run ./examples/video \
+  -model S2V-01 \
+  -subject-reference character=https://example.com/person.jpg \
+  -prompt "The character runs toward the camera and smiles" \
+  -wait
+```
+
+`-subject-reference` enables subject-reference mode. The current MiniMax S2V
+API documents one `character` subject with one image.
 
 ## First-last-frame video
 
@@ -67,6 +81,7 @@ go run ./examples/video -h
 - `-base-url`: API endpoint (default: `https://api.minimax.io`)
 - `-model`: video model for submit mode
 - `-prompt`: text prompt for submit mode
+- `-subject-reference`: subject reference as `type=image_url`, for example `character=https://example.com/person.jpg`
 - `-first-frame-image`: public image URL or Data URL for image-to-video submit mode
 - `-last-frame-image`: public image URL or Data URL for first-last-frame submit mode
 - `-task-id`: query an existing task instead of submitting a new one
@@ -79,6 +94,7 @@ go run ./examples/video -h
 - `MINIMAX_BASE_URL`
 - `MINIMAX_VIDEO_MODEL`
 - `MINIMAX_VIDEO_PROMPT`
+- `MINIMAX_VIDEO_SUBJECT_REFERENCE`
 - `MINIMAX_VIDEO_FIRST_FRAME_IMAGE`
 - `MINIMAX_VIDEO_LAST_FRAME_IMAGE`
 - `MINIMAX_VIDEO_TASK_ID`

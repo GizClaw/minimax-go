@@ -24,6 +24,7 @@ Go SDK and examples for MiniMax APIs.
   - text-to-video task submit/query
   - image-to-video task submit
   - first-last-frame video task submit
+  - subject-reference video task submit
 
 ## Roadmap
 
@@ -43,6 +44,7 @@ Implemented:
 - [x] Video T2V create: `Video.CreateTextToVideo` creates async text-to-video tasks.
 - [x] Video I2V create: `Video.CreateImageToVideo` creates async image-to-video tasks.
 - [x] Video FL2V create: `Video.CreateFirstLastFrameVideo` creates async first-last-frame video tasks.
+- [x] Video S2V create: `Video.CreateSubjectReferenceVideo` creates async subject-reference video tasks.
 - [x] Video generation query: `Video.GetTask` queries async video task status and generated file IDs.
 
 Partially implemented:
@@ -57,7 +59,7 @@ Planned:
 
 - [ ] Voice delete API.
 - [ ] Music APIs: lyrics generation, music cover preprocess, and music generation.
-- [ ] Remaining video generation APIs: subject-reference and video agent tasks.
+- [ ] Remaining video generation APIs: video agent tasks.
 - [ ] Text and model APIs: OpenAI/Anthropic-compatible chat, Responses, token estimation, and model list/retrieve endpoints.
 
 ## Requirements
