@@ -250,6 +250,40 @@ func (c *Client) OpenRawWithMeta(ctx context.Context, request RawRequest) (*RawR
 	return nil, lastErr
 }
 
+// OpenRawURLWithMeta opens an absolute raw URL without adding API authorization.
+func (c *Client) OpenRawURLWithMeta(ctx context.Context, rawURL string) (*RawResponse, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, errors.New("raw URL is empty")
+	}
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return nil, errors.New("raw URL must be absolute")
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= c.retry.MaxAttempts; attempt++ {
+		rawResponse, openErr := c.openRawURLAttempt(ctx, rawURL)
+		if openErr == nil {
+			return rawResponse, nil
+		}
+
+		lastErr = openErr
+		if !c.shouldRetry(openErr) || attempt == c.retry.MaxAttempts {
+			return nil, openErr
+		}
+
+		if sleepErr := c.retry.Sleep(ctx, c.retryDelay(attempt)); sleepErr != nil {
+			return nil, sleepErr
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = errors.New("open raw URL response failed")
+	}
+
+	return nil, lastErr
+}
+
 // Upload sends a multipart/form-data request.
 func (c *Client) Upload(ctx context.Context, request UploadRequest, out any) error {
 	_, err := c.UploadWithMeta(ctx, request, out)
@@ -353,6 +387,29 @@ func (c *Client) openRawAttempt(ctx context.Context, method string, request RawR
 			Body: io.NopCloser(bytes.NewReader(body)),
 			Meta: meta,
 		}, nil
+	}
+
+	return &RawResponse{
+		Body: resp.Body,
+		Meta: meta,
+	}, nil
+}
+
+func (c *Client) openRawURLAttempt(ctx context.Context, rawURL string) (*RawResponse, error) {
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if reqErr != nil {
+		return nil, fmt.Errorf("new raw URL request: %w", reqErr)
+	}
+	req.Header.Set("Accept", "*/*")
+
+	resp, doErr := c.httpClient.Do(req)
+	if doErr != nil {
+		return nil, doErr
+	}
+
+	meta := extractResponseMeta(resp, nil)
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, readResponseError(resp, "read raw URL error response")
 	}
 
 	return &RawResponse{
