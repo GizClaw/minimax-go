@@ -1,0 +1,345 @@
+package minimax
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/GizClaw/minimax-go/internal/protocol"
+	"github.com/GizClaw/minimax-go/internal/transport"
+)
+
+func TestImageGenerateTextToImage(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success maps url response", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s, want POST", r.Method)
+			}
+			if r.URL.Path != defaultImageGenerationPath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultImageGenerationPath)
+			}
+
+			var payload ImageTextToImageRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "image-01-live" || payload.Prompt != "A green circuit board on a clean desk" {
+				t.Fatalf("payload model/prompt = %q/%q, want trimmed values", payload.Model, payload.Prompt)
+			}
+			if payload.Style == nil || payload.Style.StyleType != "watercolor" || payload.Style.StyleWeight == nil || *payload.Style.StyleWeight != 0.8 {
+				t.Fatalf("payload.Style = %+v, want trimmed style with weight", payload.Style)
+			}
+			if payload.AspectRatio != "16:9" || payload.ResponseFormat != "url" {
+				t.Fatalf("payload aspect/format = %q/%q, want 16:9/url", payload.AspectRatio, payload.ResponseFormat)
+			}
+			if payload.Width == nil || *payload.Width != 1280 || payload.Height == nil || *payload.Height != 720 {
+				t.Fatalf("payload dimensions = %v x %v, want 1280 x 720", payload.Width, payload.Height)
+			}
+			if payload.Seed == nil || *payload.Seed != 42 || payload.N == nil || *payload.N != 2 {
+				t.Fatalf("payload seed/n = %v/%v, want 42/2", payload.Seed, payload.N)
+			}
+			if payload.PromptOptimizer == nil || !*payload.PromptOptimizer {
+				t.Fatalf("payload.PromptOptimizer = %v, want explicit true", payload.PromptOptimizer)
+			}
+			if payload.AIGCWatermark == nil || *payload.AIGCWatermark {
+				t.Fatalf("payload.AIGCWatermark = %v, want explicit false", payload.AIGCWatermark)
+			}
+
+			w.Header().Set("X-Trace-ID", "trace-image-url")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"img_task_123","data":{"image_urls":["https://example.com/1.png","https://example.com/2.png"]},"metadata":{"success_count":"2","failed_count":"0"},"extra":"kept","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newImageTestClient(t, srv)
+		response, err := client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:           " image-01-live ",
+			Prompt:          " A green circuit board on a clean desk ",
+			Style:           &ImageStyle{StyleType: " watercolor ", StyleWeight: imageFloatPtr(0.8)},
+			AspectRatio:     " 16:9 ",
+			Width:           imageIntPtr(1280),
+			Height:          imageIntPtr(720),
+			ResponseFormat:  " url ",
+			Seed:            imageInt64Ptr(42),
+			N:               imageIntPtr(2),
+			PromptOptimizer: imageBoolPtr(true),
+			AIGCWatermark:   imageBoolPtr(false),
+		})
+		if err != nil {
+			t.Fatalf("GenerateTextToImage() error = %v, want nil", err)
+		}
+		if response.ID != "img_task_123" {
+			t.Fatalf("response.ID = %q, want img_task_123", response.ID)
+		}
+		if len(response.ImageURLs) != 2 || response.ImageURLs[0] != "https://example.com/1.png" || response.ImageURLs[1] != "https://example.com/2.png" {
+			t.Fatalf("response.ImageURLs = %+v, want two URLs", response.ImageURLs)
+		}
+		if len(response.ImageBase64) != 0 {
+			t.Fatalf("response.ImageBase64 = %+v, want empty", response.ImageBase64)
+		}
+		if response.Metadata.SuccessCount == nil || *response.Metadata.SuccessCount != 2 {
+			t.Fatalf("SuccessCount = %v, want 2", response.Metadata.SuccessCount)
+		}
+		if response.Metadata.FailedCount == nil || *response.Metadata.FailedCount != 0 {
+			t.Fatalf("FailedCount = %v, want 0", response.Metadata.FailedCount)
+		}
+		if response.ResponseMeta.TraceID != "trace-image-url" {
+			t.Fatalf("TraceID = %q, want trace-image-url", response.ResponseMeta.TraceID)
+		}
+		if _, ok := response.Raw["extra"]; !ok {
+			t.Fatalf("response.Raw missing extra field: %+v", response.Raw)
+		}
+	})
+
+	t.Run("success maps base64 response", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"img_task_base64","data":{"image_base64":["ZmFrZS1wbmc="]},"metadata":{"success_count":1,"failed_count":0},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newImageTestClient(t, srv)
+		response, err := client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:          "image-01",
+			Prompt:         "tiny robot icon",
+			ResponseFormat: "base64",
+		})
+		if err != nil {
+			t.Fatalf("GenerateTextToImage() error = %v, want nil", err)
+		}
+		if response.ID != "img_task_base64" || len(response.ImageBase64) != 1 || response.ImageBase64[0] != "ZmFrZS1wbmc=" {
+			t.Fatalf("response = %+v, want base64 image response", response)
+		}
+	})
+
+	t.Run("empty model fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{Prompt: "hello"})
+		if err == nil || !strings.Contains(err.Error(), "model is empty") {
+			t.Fatalf("GenerateTextToImage() error = %v, want model validation error", err)
+		}
+	})
+
+	t.Run("empty prompt fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{Model: "image-01"})
+		if err == nil || !strings.Contains(err.Error(), "prompt is empty") {
+			t.Fatalf("GenerateTextToImage() error = %v, want prompt validation error", err)
+		}
+	})
+
+	t.Run("one-sided dimensions fail fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+			Width:  imageIntPtr(1024),
+		})
+		if err == nil || !strings.Contains(err.Error(), "width and height must be provided together") {
+			t.Fatalf("GenerateTextToImage() error = %v, want dimension pair validation error", err)
+		}
+	})
+
+	t.Run("invalid dimension bounds fail fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+			Width:  imageIntPtr(511),
+			Height: imageIntPtr(1024),
+		})
+		if err == nil || !strings.Contains(err.Error(), "width must be between 512 and 2048") {
+			t.Fatalf("GenerateTextToImage() error = %v, want dimension bound validation error", err)
+		}
+	})
+
+	t.Run("invalid dimension multiple fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+			Width:  imageIntPtr(1025),
+			Height: imageIntPtr(1024),
+		})
+		if err == nil || !strings.Contains(err.Error(), "width must be a multiple of 8") {
+			t.Fatalf("GenerateTextToImage() error = %v, want dimension multiple validation error", err)
+		}
+	})
+
+	t.Run("invalid n fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+			N:      imageIntPtr(10),
+		})
+		if err == nil || !strings.Contains(err.Error(), "n must be between 1 and 9") {
+			t.Fatalf("GenerateTextToImage() error = %v, want n validation error", err)
+		}
+	})
+
+	t.Run("invalid style weight fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01-live",
+			Prompt: "hello",
+			Style:  &ImageStyle{StyleType: "watercolor", StyleWeight: imageFloatPtr(1.5)},
+		})
+		if err == nil || !strings.Contains(err.Error(), "style_weight") {
+			t.Fatalf("GenerateTextToImage() error = %v, want style weight validation error", err)
+		}
+	})
+
+	t.Run("invalid response format fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:          "image-01",
+			Prompt:         "hello",
+			ResponseFormat: "binary",
+		})
+		if err == nil || !strings.Contains(err.Error(), "response_format") {
+			t.Fatalf("GenerateTextToImage() error = %v, want response format validation error", err)
+		}
+	})
+
+	t.Run("http error returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		client := newImageTestClient(t, srv)
+		_, err := client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("error type = %T, want *protocol.APIError", err)
+		}
+		if apiErr.HTTPStatus != http.StatusServiceUnavailable {
+			t.Fatalf("apiErr.HTTPStatus = %d, want 503", apiErr.HTTPStatus)
+		}
+	})
+
+	t.Run("base_resp non-zero returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":1026,"status_msg":"sensitive prompt"}}`))
+		}))
+		defer srv.Close()
+
+		client := newImageTestClient(t, srv)
+		_, err := client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+		})
+		assertAPIStatus(t, err, 1026, "sensitive prompt")
+	})
+
+	t.Run("context canceled is preserved", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{BaseURL: "https://api.minimax.io"})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = client.Image.GenerateTextToImage(ctx, ImageTextToImageRequest{
+			Model:  "image-01",
+			Prompt: "hello",
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("GenerateTextToImage() error = %v, want context canceled", err)
+		}
+	})
+}
+
+func newImageTestClient(t *testing.T, srv *httptest.Server) *Client {
+	t.Helper()
+
+	client, err := NewClient(Config{
+		BaseURL:    srv.URL,
+		HTTPClient: srv.Client(),
+		Retry: transport.RetryConfig{
+			MaxAttempts: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v, want nil", err)
+	}
+
+	return client
+}
+
+func imageBoolPtr(value bool) *bool {
+	return &value
+}
+
+func imageFloatPtr(value float64) *float64 {
+	return &value
+}
+
+func imageIntPtr(value int) *int {
+	return &value
+}
+
+func imageInt64Ptr(value int64) *int64 {
+	return &value
+}

@@ -1,6 +1,6 @@
 # MiniMax API Inventory
 
-Last checked against MiniMax official docs: 2026-06-25.
+Last checked against MiniMax official docs: 2026-06-26.
 
 This directory tracks the official MiniMax API surface against the current
 `minimax-go` SDK implementation. Each file under `docs/interfaces/` covers one
@@ -20,13 +20,14 @@ Implemented or partially implemented today:
 - Speech T2A async create/query: `SpeechAsync` in `speech_async.go`
 - File management: `File.Upload`, `File.List`, `File.Retrieve`, `File.Download`, and `File.Delete` in `file.go`
 - Voice list/design/clone: `Voice` in `voice.go`
+- Image text-to-image: `Image.GenerateTextToImage` in `image.go`
 - Video text-to-video create/query: `Video` in `video.go`
 
 Not implemented today:
 
 - Text/OpenAI/Anthropic compatible model calls
 - Model list/retrieve endpoints
-- Image generation
+- Image generation image-to-image
 - Music generation, lyrics generation, music cover preprocess
 - Remaining video generation and video agent task APIs: image-to-video, first-last-frame, subject-reference, and video agent tasks
 - Voice delete

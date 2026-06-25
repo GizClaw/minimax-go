@@ -19,6 +19,7 @@ type Client struct {
 	Speech      *SpeechService
 	SpeechAsync *SpeechAsyncService
 	File        *FileService
+	Image       *ImageService
 	Voice       *VoiceService
 	Video       *VideoService
 }
@@ -54,6 +55,10 @@ func NewClient(config Config) (*Client, error) {
 		downloadEndpoint: defaultFileDownloadPath,
 		deleteEndpoint:   defaultFileDeletePath,
 		maxUploadBytes:   defaultFileMaxUploadBytes,
+	}
+	client.Image = &ImageService{
+		transport: trans,
+		endpoint:  defaultImageGenerationPath,
 	}
 	client.Voice = &VoiceService{
 		transport:      trans,
