@@ -20,6 +20,10 @@ Go SDK and examples for MiniMax APIs.
 - Image APIs
   - text-to-image generation
   - image-to-image generation
+- Music APIs
+  - lyrics generation and editing
+  - non-streaming music generation
+  - cover preprocess and cover generation
 - Video APIs
   - text-to-video task submit/query
   - image-to-video task submit
@@ -41,6 +45,9 @@ Implemented:
 - [x] Voice design: `Voice.DesignVoice` creates a custom voice from a prompt and preview text.
 - [x] Image T2I: `Image.GenerateTextToImage` generates images from text prompts.
 - [x] Image I2I: `Image.GenerateImageToImage` generates images from prompts and subject references.
+- [x] Music lyrics generation: `Music.GenerateLyrics` writes or edits lyrics for music workflows.
+- [x] Music generation: `Music.Generate` creates non-streaming songs, instrumental tracks, and cover music.
+- [x] Music cover preprocess: `Music.PreprocessCover` extracts cover features and formatted lyrics for two-step cover workflows.
 - [x] Video T2V create: `Video.CreateTextToVideo` creates async text-to-video tasks.
 - [x] Video I2V create: `Video.CreateImageToVideo` creates async image-to-video tasks.
 - [x] Video FL2V create: `Video.CreateFirstLastFrameVideo` creates async first-last-frame video tasks.
@@ -54,11 +61,11 @@ Partially implemented:
 - [ ] Speech T2A async: `SpeechAsync.SubmitAsync` and `SpeechAsync.GetAsyncTask` are implemented; some official async fields and metadata still need a schema audit.
 - [ ] Voice clone: `Voice.CloneVoice` supports `audio_url` and `file_id`; dedicated prompt-audio helpers and full official clone fields are still missing.
 - [ ] Voice clone audio uploads: generic `File.Upload` can upload clone/prompt audio, but there are no dedicated typed helpers yet.
+- [ ] Music streaming: `Music.Generate` rejects `stream=true`; official streaming music response handling is not implemented yet.
 
 Planned:
 
 - [ ] Voice delete API.
-- [ ] Music APIs: lyrics generation, music cover preprocess, and music generation.
 - [ ] Remaining video generation APIs: video agent tasks.
 - [ ] Text and model APIs: OpenAI/Anthropic-compatible chat, Responses, token estimation, and model list/retrieve endpoints.
 
@@ -85,6 +92,7 @@ go run ./examples/speech http -h
 go run ./examples/voice/list -h
 go run ./examples/file -h
 go run ./examples/image -h
+go run ./examples/music -h
 go run ./examples/video -h
 ```
 
@@ -103,6 +111,7 @@ go test ./...
 - `speech*.go`: speech sync/stream/async APIs
 - `voice.go`: voice-related APIs
 - `image.go`: image generation APIs
+- `music.go`: music generation and lyrics APIs
 - `video.go`: video generation task APIs
 - `file.go`: file management APIs
 - `docs/`: official API inventory and implementation status by interface

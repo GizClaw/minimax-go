@@ -20,6 +20,7 @@ type Client struct {
 	SpeechAsync *SpeechAsyncService
 	File        *FileService
 	Image       *ImageService
+	Music       *MusicService
 	Voice       *VoiceService
 	Video       *VideoService
 }
@@ -59,6 +60,12 @@ func NewClient(config Config) (*Client, error) {
 	client.Image = &ImageService{
 		transport: trans,
 		endpoint:  defaultImageGenerationPath,
+	}
+	client.Music = &MusicService{
+		transport:          trans,
+		generateEndpoint:   defaultMusicGenerationPath,
+		preprocessEndpoint: defaultMusicCoverPreprocessPath,
+		lyricsEndpoint:     defaultLyricsGenerationPath,
 	}
 	client.Voice = &VoiceService{
 		transport:      trans,

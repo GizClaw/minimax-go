@@ -21,13 +21,14 @@ Implemented or partially implemented today:
 - File management: `File.Upload`, `File.List`, `File.Retrieve`, `File.Download`, and `File.Delete` in `file.go`
 - Voice list/design/clone: `Voice` in `voice.go`
 - Image text-to-image and image-to-image: `Image` in `image.go`
+- Music lyrics generation, music cover preprocess, and non-streaming music generation: `Music` in `music.go`
 - Video text-to-video, image-to-video, first-last-frame, subject-reference create/query: `Video` in `video.go`
 
 Not implemented today:
 
 - Text/OpenAI/Anthropic compatible model calls
 - Model list/retrieve endpoints
-- Music generation, lyrics generation, music cover preprocess
+- Music streaming generation
 - Remaining video generation and video agent task APIs: video agent tasks
 - Voice delete
 - Official WebSocket T2A client
