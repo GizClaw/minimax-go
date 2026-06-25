@@ -1,7 +1,7 @@
 # Video Example
 
-`examples/video` demonstrates MiniMax text-to-video and image-to-video task
-creation, task query, and the file retrieve handoff.
+`examples/video` demonstrates MiniMax text-to-video, image-to-video, and
+first-last-frame video task creation, task query, and the file retrieve handoff.
 
 ## Quick start
 
@@ -24,6 +24,21 @@ go run ./examples/video \
 
 When the task succeeds, the command prints the generated `file_id` and any
 retrieved `download_url`.
+
+## First-last-frame video
+
+```bash
+go run ./examples/video \
+  -model MiniMax-Hailuo-02 \
+  -first-frame-image https://example.com/start.png \
+  -last-frame-image https://example.com/end.png \
+  -prompt "Camera pulls back as the subject turns toward the light" \
+  -wait
+```
+
+`-last-frame-image` enables first-last-frame mode. `-first-frame-image` and
+`-prompt` are optional for the SDK request, but they are usually useful for
+controlling the generated motion.
 
 ## Query an existing task
 
@@ -53,6 +68,7 @@ go run ./examples/video -h
 - `-model`: video model for submit mode
 - `-prompt`: text prompt for submit mode
 - `-first-frame-image`: public image URL or Data URL for image-to-video submit mode
+- `-last-frame-image`: public image URL or Data URL for first-last-frame submit mode
 - `-task-id`: query an existing task instead of submitting a new one
 - `-wait`: poll until the task reaches `success` or `failed`
 - `-output`: optional raw video output path after a successful task
@@ -64,6 +80,7 @@ go run ./examples/video -h
 - `MINIMAX_VIDEO_MODEL`
 - `MINIMAX_VIDEO_PROMPT`
 - `MINIMAX_VIDEO_FIRST_FRAME_IMAGE`
+- `MINIMAX_VIDEO_LAST_FRAME_IMAGE`
 - `MINIMAX_VIDEO_TASK_ID`
 - `MINIMAX_VIDEO_DURATION`
 - `MINIMAX_VIDEO_RESOLUTION`

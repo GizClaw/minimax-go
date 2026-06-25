@@ -30,6 +30,7 @@ type options struct {
 	model            string
 	prompt           string
 	firstFrameImage  string
+	lastFrameImage   string
 	taskID           string
 	duration         int
 	resolution       string
@@ -67,6 +68,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		model:            envOrDefault("MINIMAX_VIDEO_MODEL", defaultModel),
 		prompt:           envOrDefault("MINIMAX_VIDEO_PROMPT", defaultPrompt),
 		firstFrameImage:  os.Getenv("MINIMAX_VIDEO_FIRST_FRAME_IMAGE"),
+		lastFrameImage:   os.Getenv("MINIMAX_VIDEO_LAST_FRAME_IMAGE"),
 		taskID:           os.Getenv("MINIMAX_VIDEO_TASK_ID"),
 		duration:         envIntOrDefault("MINIMAX_VIDEO_DURATION", defaultDuration),
 		resolution:       envOrDefault("MINIMAX_VIDEO_RESOLUTION", defaultResolution),
@@ -87,7 +89,8 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 	fs.StringVar(&opts.baseURL, "base-url", opts.baseURL, "Minimax API base URL (env: MINIMAX_BASE_URL)")
 	fs.StringVar(&opts.model, "model", opts.model, "Video model for submit mode (env: MINIMAX_VIDEO_MODEL)")
 	fs.StringVar(&opts.prompt, "prompt", opts.prompt, "Prompt for submit mode (env: MINIMAX_VIDEO_PROMPT)")
-	fs.StringVar(&opts.firstFrameImage, "first-frame-image", opts.firstFrameImage, "First frame image URL or Data URL for image-to-video submit mode")
+	fs.StringVar(&opts.firstFrameImage, "first-frame-image", opts.firstFrameImage, "First frame image URL or Data URL for image-to-video or first-last-frame submit mode")
+	fs.StringVar(&opts.lastFrameImage, "last-frame-image", opts.lastFrameImage, "Last frame image URL or Data URL for first-last-frame submit mode")
 	fs.StringVar(&opts.taskID, "task-id", opts.taskID, "Query existing task_id instead of submitting a new task")
 	fs.IntVar(&opts.duration, "duration", opts.duration, "Video duration in seconds for submit mode")
 	fs.StringVar(&opts.resolution, "resolution", opts.resolution, "Video resolution for submit mode")
@@ -107,6 +110,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		fmt.Fprintf(fs.Output(), "\nModes:\n")
 		fmt.Fprintf(fs.Output(), "  - submit mode: no -task-id, creates a text-to-video task\n")
 		fmt.Fprintf(fs.Output(), "  - image-to-video mode: add -first-frame-image to submit with an initial image\n")
+		fmt.Fprintf(fs.Output(), "  - first-last-frame mode: add -last-frame-image, optionally with -first-frame-image\n")
 		fmt.Fprintf(fs.Output(), "  - task mode: set -task-id, queries an existing video task\n")
 		fmt.Fprintf(fs.Output(), "\nNotes:\n")
 		fmt.Fprintf(fs.Output(), "  - use -wait to poll until Success/Fail\n")
@@ -132,7 +136,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		if opts.model == "" {
 			return options{}, errors.New("submit mode requires model")
 		}
-		if opts.firstFrameImage == "" && opts.prompt == "" {
+		if opts.firstFrameImage == "" && opts.lastFrameImage == "" && opts.prompt == "" {
 			return options{}, errors.New("submit mode requires prompt")
 		}
 	}
@@ -208,6 +212,24 @@ func run(opts options, out io.Writer) error {
 }
 
 func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) (*minimax.VideoTaskCreateResponse, error) {
+	if opts.lastFrameImage != "" {
+		submitted, err := client.Video.CreateFirstLastFrameVideo(ctx, minimax.VideoFirstLastFrameRequest{
+			Model:           opts.model,
+			LastFrameImage:  opts.lastFrameImage,
+			FirstFrameImage: opts.firstFrameImage,
+			Prompt:          opts.prompt,
+			PromptOptimizer: boolPtr(opts.promptOptimizer),
+			Duration:        intPtr(opts.duration),
+			Resolution:      opts.resolution,
+			CallbackURL:     opts.callbackURL,
+			AIGCWatermark:   boolPtr(opts.aigcWatermark),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("Video.CreateFirstLastFrameVideo failed: %w", err)
+		}
+		return submitted, nil
+	}
+
 	if opts.firstFrameImage != "" {
 		submitted, err := client.Video.CreateImageToVideo(ctx, minimax.VideoImageToVideoRequest{
 			Model:            opts.model,
@@ -270,6 +292,7 @@ func trimOptions(opts *options) {
 	opts.model = strings.TrimSpace(opts.model)
 	opts.prompt = strings.TrimSpace(opts.prompt)
 	opts.firstFrameImage = strings.TrimSpace(opts.firstFrameImage)
+	opts.lastFrameImage = strings.TrimSpace(opts.lastFrameImage)
 	opts.taskID = strings.TrimSpace(opts.taskID)
 	opts.resolution = strings.TrimSpace(opts.resolution)
 	opts.callbackURL = strings.TrimSpace(opts.callbackURL)
