@@ -2,8 +2,8 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/image-generation-t2i.md
 - Endpoint: `POST /v1/image_generation`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `image.go`, `image_test.go`, `examples/image/`
 
 ## Purpose
 
@@ -17,6 +17,12 @@ Request fields include `model`, `prompt`, optional `style`, `aspect_ratio`,
 
 ## Development notes
 
-Add an `ImageService` with text and image variants sharing request/response
-types where possible.
+Implemented as `Client.Image.GenerateTextToImage`.
 
+The SDK keeps model names as strings, validates required `model` and `prompt`
+client-side, requires custom `width` and `height` to be supplied together,
+preserves explicit boolean values through pointer fields, and maps URL/base64
+image outputs into a single response type.
+
+Metadata counts are parsed from either JSON numbers or quoted numeric strings
+because the official response example shows quoted values.

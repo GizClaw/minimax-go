@@ -11,6 +11,9 @@ Generate images from text plus reference image input.
 
 ## Development notes
 
-Implement with the same `ImageService` as text-to-image. Model image inputs
-explicitly rather than using `map[string]any` for stable fields.
+Implement with the same `ImageService` used by text-to-image. Model image
+inputs explicitly rather than using `map[string]any` for stable fields, and
+reuse the existing `ImageGenerationResponse` mapping when the response shape
+matches T2I.
 
+This remains a planned API after the T2I implementation.
