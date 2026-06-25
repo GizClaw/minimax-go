@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -209,24 +210,15 @@ func run(opts options, out io.Writer) error {
 		return nil
 	}
 
-	downloaded, err := client.File.Download(ctx, response.FileID)
-	if err != nil {
-		return fmt.Errorf("File.Download failed: %w", err)
-	}
-	defer downloaded.Body.Close()
-
-	outputFile, err := os.Create(opts.output)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outputFile.Close()
-
-	if _, err := io.Copy(outputFile, downloaded.Body); err != nil {
-		return fmt.Errorf("failed to write output file: %w", err)
+	if file.File.DownloadURL != "" {
+		if err := downloadFromURL(ctx, file.File.DownloadURL, opts.output); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "saved=%s\n", opts.output)
+		return nil
 	}
 
-	fmt.Fprintf(out, "saved=%s\n", opts.output)
-	return nil
+	return downloadFileContent(ctx, client, response.FileID, opts.output, out)
 }
 
 func waitOrQuery(ctx context.Context, client *minimax.Client, taskID string, opts options, out io.Writer) (*minimax.VideoTaskStatusResponse, error) {
@@ -260,6 +252,54 @@ func trimOptions(opts *options) {
 	opts.resolution = strings.TrimSpace(opts.resolution)
 	opts.callbackURL = strings.TrimSpace(opts.callbackURL)
 	opts.output = strings.TrimSpace(opts.output)
+}
+
+func downloadFromURL(ctx context.Context, downloadURL string, output string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create download request: %w", err)
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("download_url request failed: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("download_url request failed: http status %d", response.StatusCode)
+	}
+
+	return writeBodyToFile(response.Body, output)
+}
+
+func downloadFileContent(ctx context.Context, client *minimax.Client, fileID string, output string, out io.Writer) error {
+	downloaded, err := client.File.Download(ctx, fileID)
+	if err != nil {
+		return fmt.Errorf("File.Download failed: %w", err)
+	}
+	defer downloaded.Body.Close()
+
+	if err := writeBodyToFile(downloaded.Body, output); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "saved=%s\n", output)
+	return nil
+}
+
+func writeBodyToFile(body io.Reader, output string) error {
+	outputFile, err := os.Create(output)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outputFile.Close()
+
+	if _, err := io.Copy(outputFile, body); err != nil {
+		return fmt.Errorf("failed to write output file: %w", err)
+	}
+
+	return nil
 }
 
 func envOrDefault(key, defaultValue string) string {

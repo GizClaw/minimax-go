@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -51,10 +54,11 @@ func TestParseOptions(t *testing.T) {
 	})
 }
 
-func TestRunSubmitsWaitsAndRetrievesVideo(t *testing.T) {
+func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
@@ -94,7 +98,13 @@ func TestRunSubmitsWaitsAndRetrievesVideo(t *testing.T) {
 				t.Fatalf("file_id query = %q, want file_video_123", got)
 			}
 
-			_, _ = w.Write([]byte(`{"file":{"file_id":"file_video_123","download_url":"https://cdn.example.com/video.mp4"},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"file":{"file_id":"file_video_123","download_url":%q},"base_resp":{"status_code":0,"status_msg":"success"}}`, srv.URL+"/video.mp4")))
+		case "/video.mp4":
+			if r.Method != http.MethodGet {
+				t.Fatalf("download method = %s, want GET", r.Method)
+			}
+			w.Header().Set("Content-Type", "video/mp4")
+			_, _ = w.Write([]byte("fake mp4 data"))
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -102,6 +112,7 @@ func TestRunSubmitsWaitsAndRetrievesVideo(t *testing.T) {
 	defer srv.Close()
 
 	var stdout bytes.Buffer
+	outputPath := filepath.Join(t.TempDir(), "video.mp4")
 	err := run(options{
 		apiKey:          "test-key",
 		baseURL:         srv.URL,
@@ -111,6 +122,7 @@ func TestRunSubmitsWaitsAndRetrievesVideo(t *testing.T) {
 		resolution:      "768P",
 		promptOptimizer: true,
 		wait:            true,
+		output:          outputPath,
 		timeout:         30 * time.Second,
 		pollInterval:    time.Millisecond,
 	}, &stdout)
@@ -123,11 +135,20 @@ func TestRunSubmitsWaitsAndRetrievesVideo(t *testing.T) {
 		"submitted task_id=task_video_123",
 		"task_id=task_video_123 status=success raw_status=Success file_id=file_video_123",
 		"file_id=file_video_123",
-		"download_url=https://cdn.example.com/video.mp4",
+		"download_url=" + srv.URL + "/video.mp4",
+		"saved=" + outputPath,
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v, want nil", err)
+	}
+	if string(written) != "fake mp4 data" {
+		t.Fatalf("output file = %q, want fake mp4 data", string(written))
 	}
 }
 
