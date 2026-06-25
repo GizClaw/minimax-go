@@ -114,7 +114,7 @@ type fileListRawResponse struct {
 }
 
 type fileRetrieveRawResponse struct {
-	File fileRawObject `json:"file,omitempty"`
+	File fileRawObject `json:"file"`
 }
 
 type fileDeleteRawResponse struct {

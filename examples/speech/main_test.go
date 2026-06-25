@@ -25,7 +25,7 @@ func TestWaitTask(t *testing.T) {
 func testWaitTaskPollsUntilSucceeded(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
+	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/query/t2a_async_query_v2" {
 			t.Fatalf("path = %s, want /v1/query/t2a_async_query_v2", r.URL.Path)
@@ -36,7 +36,7 @@ func testWaitTaskPollsUntilSucceeded(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if atomic.AddInt32(&attempts, 1) == 1 {
+		if attempts.Add(1) == 1 {
 			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"task_id":"task_1","status":"processing"}`))
 			return
 		}

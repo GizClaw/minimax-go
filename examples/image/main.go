@@ -186,22 +186,22 @@ func generateImage(ctx context.Context, client *minimax.Client, opts options) (*
 			SubjectReferences: opts.subjectRefs.ImageSubjectReferences(),
 			AspectRatio:       opts.aspectRatio,
 			ResponseFormat:    opts.responseFormat,
-			N:                 intPtr(opts.n),
-			PromptOptimizer:   boolPtr(opts.promptOptimizer),
-			AIGCWatermark:     boolPtr(opts.aigcWatermark),
+			N:                 new(opts.n),
+			PromptOptimizer:   new(opts.promptOptimizer),
+			AIGCWatermark:     new(opts.aigcWatermark),
 		}
 		if opts.styleType != "" {
 			request.Style = &minimax.ImageStyle{StyleType: opts.styleType}
 			if opts.styleWeight > 0 {
-				request.Style.StyleWeight = floatPtr(opts.styleWeight)
+				request.Style.StyleWeight = new(opts.styleWeight)
 			}
 		}
 		if opts.width != 0 {
-			request.Width = intPtr(opts.width)
-			request.Height = intPtr(opts.height)
+			request.Width = new(opts.width)
+			request.Height = new(opts.height)
 		}
 		if opts.seed != 0 {
-			request.Seed = int64Ptr(opts.seed)
+			request.Seed = new(opts.seed)
 		}
 
 		response, err := client.Image.GenerateImageToImage(ctx, request)
@@ -216,22 +216,22 @@ func generateImage(ctx context.Context, client *minimax.Client, opts options) (*
 		Prompt:          opts.prompt,
 		AspectRatio:     opts.aspectRatio,
 		ResponseFormat:  opts.responseFormat,
-		N:               intPtr(opts.n),
-		PromptOptimizer: boolPtr(opts.promptOptimizer),
-		AIGCWatermark:   boolPtr(opts.aigcWatermark),
+		N:               new(opts.n),
+		PromptOptimizer: new(opts.promptOptimizer),
+		AIGCWatermark:   new(opts.aigcWatermark),
 	}
 	if opts.styleType != "" {
 		request.Style = &minimax.ImageStyle{StyleType: opts.styleType}
 		if opts.styleWeight > 0 {
-			request.Style.StyleWeight = floatPtr(opts.styleWeight)
+			request.Style.StyleWeight = new(opts.styleWeight)
 		}
 	}
 	if opts.width != 0 {
-		request.Width = intPtr(opts.width)
-		request.Height = intPtr(opts.height)
+		request.Width = new(opts.width)
+		request.Height = new(opts.height)
 	}
 	if opts.seed != 0 {
-		request.Seed = int64Ptr(opts.seed)
+		request.Seed = new(opts.seed)
 	}
 
 	response, err := client.Image.GenerateTextToImage(ctx, request)
@@ -408,20 +408,4 @@ func parseSubjectReference(value string) (minimax.ImageSubjectReference, error) 
 	}
 
 	return minimax.ImageSubjectReference{Type: referenceType, ImageFile: imageFile}, nil
-}
-
-func boolPtr(value bool) *bool {
-	return &value
-}
-
-func floatPtr(value float64) *float64 {
-	return &value
-}
-
-func intPtr(value int) *int {
-	return &value
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
 }

@@ -226,9 +226,9 @@ func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) 
 			Model:             opts.model,
 			SubjectReferences: opts.subjectRefs.VideoSubjectReferences(),
 			Prompt:            opts.prompt,
-			PromptOptimizer:   boolPtr(opts.promptOptimizer),
+			PromptOptimizer:   new(opts.promptOptimizer),
 			CallbackURL:       opts.callbackURL,
-			AIGCWatermark:     boolPtr(opts.aigcWatermark),
+			AIGCWatermark:     new(opts.aigcWatermark),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("Video.CreateSubjectReferenceVideo failed: %w", err)
@@ -242,11 +242,11 @@ func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) 
 			LastFrameImage:  opts.lastFrameImage,
 			FirstFrameImage: opts.firstFrameImage,
 			Prompt:          opts.prompt,
-			PromptOptimizer: boolPtr(opts.promptOptimizer),
-			Duration:        intPtr(opts.duration),
+			PromptOptimizer: new(opts.promptOptimizer),
+			Duration:        new(opts.duration),
 			Resolution:      opts.resolution,
 			CallbackURL:     opts.callbackURL,
-			AIGCWatermark:   boolPtr(opts.aigcWatermark),
+			AIGCWatermark:   new(opts.aigcWatermark),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("Video.CreateFirstLastFrameVideo failed: %w", err)
@@ -259,12 +259,12 @@ func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) 
 			Model:            opts.model,
 			FirstFrameImage:  opts.firstFrameImage,
 			Prompt:           opts.prompt,
-			PromptOptimizer:  boolPtr(opts.promptOptimizer),
-			FastPretreatment: boolPtr(opts.fastPretreatment),
-			Duration:         intPtr(opts.duration),
+			PromptOptimizer:  new(opts.promptOptimizer),
+			FastPretreatment: new(opts.fastPretreatment),
+			Duration:         new(opts.duration),
 			Resolution:       opts.resolution,
 			CallbackURL:      opts.callbackURL,
-			AIGCWatermark:    boolPtr(opts.aigcWatermark),
+			AIGCWatermark:    new(opts.aigcWatermark),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("Video.CreateImageToVideo failed: %w", err)
@@ -275,12 +275,12 @@ func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) 
 	submitted, err := client.Video.CreateTextToVideo(ctx, minimax.VideoTextToVideoRequest{
 		Model:            opts.model,
 		Prompt:           opts.prompt,
-		PromptOptimizer:  boolPtr(opts.promptOptimizer),
-		FastPretreatment: boolPtr(opts.fastPretreatment),
-		Duration:         intPtr(opts.duration),
+		PromptOptimizer:  new(opts.promptOptimizer),
+		FastPretreatment: new(opts.fastPretreatment),
+		Duration:         new(opts.duration),
 		Resolution:       opts.resolution,
 		CallbackURL:      opts.callbackURL,
-		AIGCWatermark:    boolPtr(opts.aigcWatermark),
+		AIGCWatermark:    new(opts.aigcWatermark),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Video.CreateTextToVideo failed: %w", err)
@@ -455,12 +455,4 @@ func envBoolOrDefault(key string, defaultValue bool) bool {
 	default:
 		return defaultValue
 	}
-}
-
-func boolPtr(value bool) *bool {
-	return &value
-}
-
-func intPtr(value int) *int {
-	return &value
 }

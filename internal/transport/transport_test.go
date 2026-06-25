@@ -135,9 +135,9 @@ func testDoJSONResponseMeta(t *testing.T) {
 func testDoJSONRetryEventuallySuccess(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
+	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		current := atomic.AddInt32(&attempts, 1)
+		current := attempts.Add(1)
 		if current < 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"temporary"}`))
@@ -170,7 +170,7 @@ func testDoJSONRetryEventuallySuccess(t *testing.T) {
 		t.Fatalf("DoJSON() error = %v, want nil", err)
 	}
 
-	if got := atomic.LoadInt32(&attempts); got != 3 {
+	if got := attempts.Load(); got != 3 {
 		t.Fatalf("attempts = %d, want 3", got)
 	}
 }
@@ -178,10 +178,10 @@ func testDoJSONRetryEventuallySuccess(t *testing.T) {
 func testDoJSONRetryExhausted(t *testing.T) {
 	t.Parallel()
 
-	var attempts int32
-	var sleepCalls int32
+	var attempts atomic.Int32
+	var sleepCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&attempts, 1)
+		attempts.Add(1)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"error":"still unavailable"}`))
 	}))
@@ -195,7 +195,7 @@ func testDoJSONRetryExhausted(t *testing.T) {
 			BaseDelay:   time.Millisecond,
 			MaxDelay:    time.Millisecond,
 			Sleep: func(context.Context, time.Duration) error {
-				atomic.AddInt32(&sleepCalls, 1)
+				sleepCalls.Add(1)
 				return nil
 			},
 		},
@@ -218,11 +218,11 @@ func testDoJSONRetryExhausted(t *testing.T) {
 		t.Fatalf("apiErr.HTTPStatus = %d, want %d", apiErr.HTTPStatus, http.StatusServiceUnavailable)
 	}
 
-	if got := atomic.LoadInt32(&attempts); got != 3 {
+	if got := attempts.Load(); got != 3 {
 		t.Fatalf("attempts = %d, want 3", got)
 	}
 
-	if got := atomic.LoadInt32(&sleepCalls); got != 2 {
+	if got := sleepCalls.Load(); got != 2 {
 		t.Fatalf("sleepCalls = %d, want 2", got)
 	}
 }

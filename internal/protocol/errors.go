@@ -188,13 +188,11 @@ func IsRetryable(err error) bool {
 		return false
 	}
 
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		return apiErr.HTTPStatus == http.StatusTooManyRequests || apiErr.HTTPStatus >= http.StatusInternalServerError
 	}
 
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		return netErr.Timeout()
 	}
 

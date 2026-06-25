@@ -63,12 +63,12 @@ func TestVideoCreateTextToVideo(t *testing.T) {
 		response, err := client.Video.CreateTextToVideo(context.Background(), VideoTextToVideoRequest{
 			Model:            " MiniMax-Hailuo-2.3 ",
 			Prompt:           " A man picks up a book [Pedestal up] ",
-			PromptOptimizer:  videoBoolPtr(false),
-			FastPretreatment: videoBoolPtr(true),
-			Duration:         videoIntPtr(6),
+			PromptOptimizer:  new(false),
+			FastPretreatment: new(true),
+			Duration:         new(6),
 			Resolution:       " 1080P ",
 			CallbackURL:      " https://callback.example.com/video ",
-			AIGCWatermark:    videoBoolPtr(true),
+			AIGCWatermark:    new(true),
 		})
 		if err != nil {
 			t.Fatalf("CreateTextToVideo() error = %v, want nil", err)
@@ -229,12 +229,12 @@ func TestVideoCreateImageToVideo(t *testing.T) {
 			Model:            " MiniMax-Hailuo-2.3 ",
 			FirstFrameImage:  " https://example.com/frame.png ",
 			Prompt:           " A mouse runs toward the camera ",
-			PromptOptimizer:  videoBoolPtr(false),
-			FastPretreatment: videoBoolPtr(true),
-			Duration:         videoIntPtr(6),
+			PromptOptimizer:  new(false),
+			FastPretreatment: new(true),
+			Duration:         new(6),
 			Resolution:       " 1080P ",
 			CallbackURL:      " https://callback.example.com/video ",
-			AIGCWatermark:    videoBoolPtr(true),
+			AIGCWatermark:    new(true),
 		})
 		if err != nil {
 			t.Fatalf("CreateImageToVideo() error = %v, want nil", err)
@@ -443,11 +443,11 @@ func TestVideoCreateFirstLastFrameVideo(t *testing.T) {
 			LastFrameImage:  " https://example.com/end.png ",
 			FirstFrameImage: " https://example.com/start.png ",
 			Prompt:          " A child grows up in a sunny garden ",
-			PromptOptimizer: videoBoolPtr(false),
-			Duration:        videoIntPtr(6),
+			PromptOptimizer: new(false),
+			Duration:        new(6),
 			Resolution:      " 1080P ",
 			CallbackURL:     " https://callback.example.com/video ",
-			AIGCWatermark:   videoBoolPtr(true),
+			AIGCWatermark:   new(true),
 		})
 		if err != nil {
 			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want nil", err)
@@ -630,9 +630,9 @@ func TestVideoCreateSubjectReferenceVideo(t *testing.T) {
 				{Type: " character ", Image: []string{" https://example.com/person.png "}},
 			},
 			Prompt:          " A girl runs toward the camera and smiles ",
-			PromptOptimizer: videoBoolPtr(false),
+			PromptOptimizer: new(false),
 			CallbackURL:     " https://callback.example.com/video ",
-			AIGCWatermark:   videoBoolPtr(true),
+			AIGCWatermark:   new(true),
 		})
 		if err != nil {
 			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want nil", err)
@@ -1030,12 +1030,4 @@ func newVideoTestClient(t *testing.T, srv *httptest.Server) *Client {
 	}
 
 	return client
-}
-
-func videoBoolPtr(value bool) *bool {
-	return &value
-}
-
-func videoIntPtr(value int) *int {
-	return &value
 }

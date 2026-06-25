@@ -431,9 +431,9 @@ func TestDesignVoice(t *testing.T) {
 	t.Run("missing prompt fails fast", func(t *testing.T) {
 		t.Parallel()
 
-		var requests int32
+		var requests atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			atomic.AddInt32(&requests, 1)
+			requests.Add(1)
 		}))
 		defer srv.Close()
 
@@ -450,7 +450,7 @@ func TestDesignVoice(t *testing.T) {
 			t.Fatalf("DesignVoice() error = %v, want prompt validation", err)
 		}
 
-		if got := atomic.LoadInt32(&requests); got != 0 {
+		if got := requests.Load(); got != 0 {
 			t.Fatalf("requests = %d, want 0", got)
 		}
 	})
@@ -777,12 +777,12 @@ func TestCloneVoice(t *testing.T) {
 	t.Run("File.Upload and CloneVoice work together with numeric file_id", func(t *testing.T) {
 		t.Parallel()
 
-		var uploadCalls int32
-		var cloneCalls int32
+		var uploadCalls atomic.Int32
+		var cloneCalls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case defaultFileUploadPath:
-				atomic.AddInt32(&uploadCalls, 1)
+				uploadCalls.Add(1)
 				if err := r.ParseMultipartForm(1 << 20); err != nil {
 					t.Fatalf("ParseMultipartForm() error = %v", err)
 				}
@@ -792,7 +792,7 @@ func TestCloneVoice(t *testing.T) {
 				return
 
 			case defaultVoiceClonePath:
-				atomic.AddInt32(&cloneCalls, 1)
+				cloneCalls.Add(1)
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
 					t.Fatalf("ReadAll(r.Body) error = %v", err)
@@ -847,11 +847,11 @@ func TestCloneVoice(t *testing.T) {
 			t.Fatalf("cloneResp.VoiceID = %q, want %q", cloneResp.VoiceID, "clone-from-upload")
 		}
 
-		if got := atomic.LoadInt32(&uploadCalls); got != 1 {
+		if got := uploadCalls.Load(); got != 1 {
 			t.Fatalf("uploadCalls = %d, want 1", got)
 		}
 
-		if got := atomic.LoadInt32(&cloneCalls); got != 1 {
+		if got := cloneCalls.Load(); got != 1 {
 			t.Fatalf("cloneCalls = %d, want 1", got)
 		}
 	})

@@ -63,15 +63,15 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		response, err := client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:           " image-01-live ",
 			Prompt:          " A green circuit board on a clean desk ",
-			Style:           &ImageStyle{StyleType: " watercolor ", StyleWeight: imageFloatPtr(0.8)},
+			Style:           &ImageStyle{StyleType: " watercolor ", StyleWeight: new(0.8)},
 			AspectRatio:     " 16:9 ",
-			Width:           imageIntPtr(1280),
-			Height:          imageIntPtr(720),
+			Width:           new(1280),
+			Height:          new(720),
 			ResponseFormat:  " url ",
-			Seed:            imageInt64Ptr(42),
-			N:               imageIntPtr(2),
-			PromptOptimizer: imageBoolPtr(true),
-			AIGCWatermark:   imageBoolPtr(false),
+			Seed:            new(int64(42)),
+			N:               new(2),
+			PromptOptimizer: new(true),
+			AIGCWatermark:   new(false),
 		})
 		if err != nil {
 			t.Fatalf("GenerateTextToImage() error = %v, want nil", err)
@@ -158,7 +158,7 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:  "image-01",
 			Prompt: "hello",
-			Width:  imageIntPtr(1024),
+			Width:  new(1024),
 		})
 		if err == nil || !strings.Contains(err.Error(), "width and height must be provided together") {
 			t.Fatalf("GenerateTextToImage() error = %v, want dimension pair validation error", err)
@@ -175,8 +175,8 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:  "image-01",
 			Prompt: "hello",
-			Width:  imageIntPtr(511),
-			Height: imageIntPtr(1024),
+			Width:  new(511),
+			Height: new(1024),
 		})
 		if err == nil || !strings.Contains(err.Error(), "width must be between 512 and 2048") {
 			t.Fatalf("GenerateTextToImage() error = %v, want dimension bound validation error", err)
@@ -193,8 +193,8 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:  "image-01",
 			Prompt: "hello",
-			Width:  imageIntPtr(1025),
-			Height: imageIntPtr(1024),
+			Width:  new(1025),
+			Height: new(1024),
 		})
 		if err == nil || !strings.Contains(err.Error(), "width must be a multiple of 8") {
 			t.Fatalf("GenerateTextToImage() error = %v, want dimension multiple validation error", err)
@@ -211,7 +211,7 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:  "image-01",
 			Prompt: "hello",
-			N:      imageIntPtr(10),
+			N:      new(10),
 		})
 		if err == nil || !strings.Contains(err.Error(), "n must be between 1 and 9") {
 			t.Fatalf("GenerateTextToImage() error = %v, want n validation error", err)
@@ -228,7 +228,7 @@ func TestImageGenerateTextToImage(t *testing.T) {
 		_, err = client.Image.GenerateTextToImage(context.Background(), ImageTextToImageRequest{
 			Model:  "image-01-live",
 			Prompt: "hello",
-			Style:  &ImageStyle{StyleType: "watercolor", StyleWeight: imageFloatPtr(1.5)},
+			Style:  &ImageStyle{StyleType: "watercolor", StyleWeight: new(1.5)},
 		})
 		if err == nil || !strings.Contains(err.Error(), "style_weight") {
 			t.Fatalf("GenerateTextToImage() error = %v, want style weight validation error", err)
@@ -372,15 +372,15 @@ func TestImageGenerateImageToImage(t *testing.T) {
 				Type:      " character ",
 				ImageFile: " https://example.com/reference.png ",
 			}},
-			Style:           &ImageStyle{StyleType: " watercolor ", StyleWeight: imageFloatPtr(0.6)},
+			Style:           &ImageStyle{StyleType: " watercolor ", StyleWeight: new(0.6)},
 			AspectRatio:     " 16:9 ",
-			Width:           imageIntPtr(1280),
-			Height:          imageIntPtr(720),
+			Width:           new(1280),
+			Height:          new(720),
 			ResponseFormat:  " url ",
-			Seed:            imageInt64Ptr(77),
-			N:               imageIntPtr(2),
-			PromptOptimizer: imageBoolPtr(false),
-			AIGCWatermark:   imageBoolPtr(true),
+			Seed:            new(int64(77)),
+			N:               new(2),
+			PromptOptimizer: new(false),
+			AIGCWatermark:   new(true),
 		})
 		if err != nil {
 			t.Fatalf("GenerateImageToImage() error = %v, want nil", err)
@@ -538,7 +538,7 @@ func TestImageGenerateImageToImage(t *testing.T) {
 				Type:      "character",
 				ImageFile: "https://example.com/reference.png",
 			}},
-			Width: imageIntPtr(1024),
+			Width: new(1024),
 		})
 		if err == nil || !strings.Contains(err.Error(), "width and height must be provided together") {
 			t.Fatalf("GenerateImageToImage() error = %v, want dimension pair validation error", err)
@@ -559,7 +559,7 @@ func TestImageGenerateImageToImage(t *testing.T) {
 				Type:      "character",
 				ImageFile: "https://example.com/reference.png",
 			}},
-			N: imageIntPtr(10),
+			N: new(10),
 		})
 		if err == nil || !strings.Contains(err.Error(), "n must be between 1 and 9") {
 			t.Fatalf("GenerateImageToImage() error = %v, want n validation error", err)
@@ -673,20 +673,4 @@ func newImageTestClient(t *testing.T, srv *httptest.Server) *Client {
 	}
 
 	return client
-}
-
-func imageBoolPtr(value bool) *bool {
-	return &value
-}
-
-func imageFloatPtr(value float64) *float64 {
-	return &value
-}
-
-func imageIntPtr(value int) *int {
-	return &value
-}
-
-func imageInt64Ptr(value int64) *int64 {
-	return &value
 }

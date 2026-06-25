@@ -22,7 +22,7 @@ func TestSpeechAsync(t *testing.T) {
 	t.Run("speech service delegates async submit and query", func(t *testing.T) {
 		t.Parallel()
 
-		var queryAttempts int32
+		var queryAttempts atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case defaultSpeechAsyncSubmitPath:
@@ -70,7 +70,7 @@ func TestSpeechAsync(t *testing.T) {
 					t.Fatalf("query.task_id = %q, want task_123", got)
 				}
 
-				attempt := atomic.AddInt32(&queryAttempts, 1)
+				attempt := queryAttempts.Add(1)
 				w.Header().Set("Content-Type", "application/json")
 				if attempt == 1 {
 					_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"task_id":"task_123","status":"Processing"}`))
@@ -284,7 +284,7 @@ func TestGetAsyncTask(t *testing.T) {
 	t.Run("running and succeeded states are normalized", func(t *testing.T) {
 		t.Parallel()
 
-		var attempts int32
+		var attempts atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != defaultSpeechAsyncQueryPath {
 				t.Fatalf("path = %s, want %s", r.URL.Path, defaultSpeechAsyncQueryPath)
@@ -295,7 +295,7 @@ func TestGetAsyncTask(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			if atomic.AddInt32(&attempts, 1) == 1 {
+			if attempts.Add(1) == 1 {
 				_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"task":{"task_id":"task-123","status":"Processing"}}`))
 				return
 			}

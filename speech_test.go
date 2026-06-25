@@ -195,9 +195,9 @@ func TestSpeechSynthesize(t *testing.T) {
 	t.Run("retry eventually success", func(t *testing.T) {
 		t.Parallel()
 
-		var attempts int32
+		var attempts atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			current := atomic.AddInt32(&attempts, 1)
+			current := attempts.Add(1)
 			if current < 3 {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte(`{"error":"temporary unavailable"}`))
@@ -234,7 +234,7 @@ func TestSpeechSynthesize(t *testing.T) {
 			t.Fatalf("resp.Audio = %q, want Hello", string(resp.Audio))
 		}
 
-		if got := atomic.LoadInt32(&attempts); got != 3 {
+		if got := attempts.Load(); got != 3 {
 			t.Fatalf("attempts = %d, want 3", got)
 		}
 	})
@@ -242,10 +242,10 @@ func TestSpeechSynthesize(t *testing.T) {
 	t.Run("retry exhausted returns last retryable error", func(t *testing.T) {
 		t.Parallel()
 
-		var attempts int32
-		var sleepCalls int32
+		var attempts atomic.Int32
+		var sleepCalls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			atomic.AddInt32(&attempts, 1)
+			attempts.Add(1)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"temporary unavailable"}`))
 		}))
@@ -259,7 +259,7 @@ func TestSpeechSynthesize(t *testing.T) {
 				BaseDelay:   time.Millisecond,
 				MaxDelay:    time.Millisecond,
 				Sleep: func(context.Context, time.Duration) error {
-					atomic.AddInt32(&sleepCalls, 1)
+					sleepCalls.Add(1)
 					return nil
 				},
 			},
@@ -282,11 +282,11 @@ func TestSpeechSynthesize(t *testing.T) {
 			t.Fatalf("apiErr.HTTPStatus = %d, want %d", apiErr.HTTPStatus, http.StatusServiceUnavailable)
 		}
 
-		if got := atomic.LoadInt32(&attempts); got != 3 {
+		if got := attempts.Load(); got != 3 {
 			t.Fatalf("attempts = %d, want 3", got)
 		}
 
-		if got := atomic.LoadInt32(&sleepCalls); got != 2 {
+		if got := sleepCalls.Load(); got != 2 {
 			t.Fatalf("sleepCalls = %d, want 2", got)
 		}
 	})
@@ -554,9 +554,9 @@ func TestSpeechStream(t *testing.T) {
 	t.Run("unsupported output format is rejected before opening stream", func(t *testing.T) {
 		t.Parallel()
 
-		var requests int32
+		var requests atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			atomic.AddInt32(&requests, 1)
+			requests.Add(1)
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("event: done\ndata: [DONE]\n\n"))
@@ -586,7 +586,7 @@ func TestSpeechStream(t *testing.T) {
 			t.Fatalf("OpenStream() error = %v, want unsupported format error", err)
 		}
 
-		if got := atomic.LoadInt32(&requests); got != 0 {
+		if got := requests.Load(); got != 0 {
 			t.Fatalf("stream open requests = %d, want 0", got)
 		}
 	})

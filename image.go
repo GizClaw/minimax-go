@@ -93,8 +93,8 @@ type imageGenerationRawData struct {
 }
 
 type imageGenerationRawMetadata struct {
-	SuccessCount optionalInt `json:"success_count,omitempty"`
-	FailedCount  optionalInt `json:"failed_count,omitempty"`
+	SuccessCount optionalInt `json:"success_count"`
+	FailedCount  optionalInt `json:"failed_count"`
 }
 
 type optionalInt struct {
