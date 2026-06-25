@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -147,14 +148,22 @@ func run(opts options) error {
 			return fmt.Errorf("failed to read input file: %w", err)
 		}
 
-		uploaded, err = client.File.Upload(ctx, minimax.FileUploadRequest{
-			Purpose:     opts.purpose,
-			FileName:    uploadName,
-			ContentType: opts.contentType,
-			Data:        fileData,
-		})
+		if opts.purpose == minimax.VoiceUploadPurposeCloneAudio {
+			uploaded, err = client.Voice.UploadCloneAudio(ctx, minimax.UploadCloneAudioRequest{
+				Filename:    uploadName,
+				Content:     bytes.NewReader(fileData),
+				ContentType: opts.contentType,
+			})
+		} else {
+			uploaded, err = client.File.Upload(ctx, minimax.FileUploadRequest{
+				Purpose:     opts.purpose,
+				FileName:    uploadName,
+				ContentType: opts.contentType,
+				Data:        fileData,
+			})
+		}
 		if err != nil {
-			return fmt.Errorf("File.Upload failed before cloning: %w", err)
+			return fmt.Errorf("audio upload failed before cloning: %w", err)
 		}
 
 		cloneReq.FileID = strings.TrimSpace(uploaded.FileID)

@@ -1048,6 +1048,256 @@ func TestVoiceDesignCloneValidation(t *testing.T) {
 	})
 }
 
+func TestDeleteVoice(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success preserves raw payload", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s, want POST", r.Method)
+			}
+			if r.URL.Path != defaultVoiceDeletePath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultVoiceDeletePath)
+			}
+
+			var payload deleteVoiceWireRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode(request body) error = %v", err)
+			}
+			if payload.VoiceID != "voice-to-delete" {
+				t.Fatalf("payload.voice_id = %q, want voice-to-delete", payload.VoiceID)
+			}
+			if payload.VoiceType != VoiceDeleteTypeGeneration {
+				t.Fatalf("payload.voice_type = %q, want %q", payload.VoiceType, VoiceDeleteTypeGeneration)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"voice_id":"voice-to-delete","request_id":"req-delete"}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		resp, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{VoiceID: " voice-to-delete "})
+		if err != nil {
+			t.Fatalf("DeleteVoice() error = %v, want nil", err)
+		}
+		if resp.VoiceID != "voice-to-delete" {
+			t.Fatalf("resp.VoiceID = %q, want voice-to-delete", resp.VoiceID)
+		}
+		if _, ok := resp.Raw["request_id"]; !ok {
+			t.Fatalf("resp.Raw = %v, want request_id", resp.Raw)
+		}
+	})
+
+	t.Run("empty voice id fails before request", func(t *testing.T) {
+		t.Parallel()
+
+		var called atomic.Bool
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			called.Store(true)
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{VoiceID: " \t "})
+		if err == nil {
+			t.Fatal("DeleteVoice() error = nil, want non-nil")
+		}
+		if called.Load() {
+			t.Fatal("server called for invalid delete request, want local validation")
+		}
+	})
+
+	t.Run("base_resp error returns unified APIError", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2301,"status_msg":"voice not found"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{VoiceID: "missing"})
+		if err == nil {
+			t.Fatal("DeleteVoice() error = nil, want non-nil")
+		}
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("DeleteVoice() error type = %T, want *protocol.APIError", err)
+		}
+		if apiErr.StatusCode != 2301 {
+			t.Fatalf("apiErr.StatusCode = %d, want 2301", apiErr.StatusCode)
+		}
+	})
+
+	t.Run("http error returns unified APIError", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"bad gateway"}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{VoiceID: "voice-id"})
+		if err == nil {
+			t.Fatal("DeleteVoice() error = nil, want non-nil")
+		}
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("DeleteVoice() error type = %T, want *protocol.APIError", err)
+		}
+		if apiErr.HTTPStatus != http.StatusBadGateway {
+			t.Fatalf("apiErr.HTTPStatus = %d, want %d", apiErr.HTTPStatus, http.StatusBadGateway)
+		}
+	})
+
+	t.Run("explicit cloning voice type is forwarded", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload deleteVoiceWireRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode(request body) error = %v", err)
+			}
+			if payload.VoiceType != VoiceDeleteTypeCloning {
+				t.Fatalf("payload.voice_type = %q, want %q", payload.VoiceType, VoiceDeleteTypeCloning)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"voice_id":"clone-voice"}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{
+			VoiceID:   "clone-voice",
+			VoiceType: VoiceDeleteTypeCloning,
+		})
+		if err != nil {
+			t.Fatalf("DeleteVoice() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("invalid voice type fails before request", func(t *testing.T) {
+		t.Parallel()
+
+		var called atomic.Bool
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			called.Store(true)
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.DeleteVoice(context.Background(), DeleteVoiceRequest{
+			VoiceID:   "voice-id",
+			VoiceType: "system",
+		})
+		if err == nil {
+			t.Fatal("DeleteVoice() error = nil, want invalid voice_type error")
+		}
+		if called.Load() {
+			t.Fatal("server called for invalid voice_type, want local validation")
+		}
+	})
+}
+
+func TestVoiceUploadHelpers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("clone audio helper sends official purpose", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != defaultFileUploadPath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultFileUploadPath)
+			}
+			if got := r.FormValue("purpose"); got != VoiceUploadPurposeCloneAudio {
+				t.Fatalf("purpose = %q, want %q", got, VoiceUploadPurposeCloneAudio)
+			}
+			file, header, err := r.FormFile(defaultFileFieldName)
+			if err != nil {
+				t.Fatalf("FormFile() error = %v", err)
+			}
+			defer file.Close()
+			if header.Filename != "sample.mp3" {
+				t.Fatalf("filename = %q, want sample.mp3", header.Filename)
+			}
+			body, err := io.ReadAll(file)
+			if err != nil {
+				t.Fatalf("ReadAll(file) error = %v", err)
+			}
+			if string(body) != "audio-bytes" {
+				t.Fatalf("file body = %q, want audio-bytes", string(body))
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"file":{"file_id":123,"filename":"sample.mp3","purpose":"voice_clone","bytes":11}}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		resp, err := client.Voice.UploadCloneAudio(context.Background(), UploadCloneAudioRequest{
+			Filename:    "sample.mp3",
+			Content:     strings.NewReader("audio-bytes"),
+			ContentType: "audio/mpeg",
+		})
+		if err != nil {
+			t.Fatalf("UploadCloneAudio() error = %v, want nil", err)
+		}
+		if resp.FileID != "123" {
+			t.Fatalf("resp.FileID = %q, want 123", resp.FileID)
+		}
+	})
+
+	t.Run("prompt audio helper sends official purpose", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.FormValue("purpose"); got != VoiceUploadPurposePromptAudio {
+				t.Fatalf("purpose = %q, want %q", got, VoiceUploadPurposePromptAudio)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"ok"},"file":{"file_id":"prompt-1","filename":"prompt.wav","purpose":"prompt_audio","bytes":4}}`))
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		resp, err := client.Voice.UploadPromptAudio(context.Background(), UploadPromptAudioRequest{
+			Filename: "prompt.wav",
+			Content:  strings.NewReader("data"),
+		})
+		if err != nil {
+			t.Fatalf("UploadPromptAudio() error = %v, want nil", err)
+		}
+		if resp.FileID != "prompt-1" {
+			t.Fatalf("resp.FileID = %q, want prompt-1", resp.FileID)
+		}
+	})
+
+	t.Run("nil content fails before request", func(t *testing.T) {
+		t.Parallel()
+
+		var called atomic.Bool
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			called.Store(true)
+		}))
+		defer srv.Close()
+
+		client := newVoiceTestClient(t, srv, transport.RetryConfig{MaxAttempts: 1})
+		_, err := client.Voice.UploadCloneAudio(context.Background(), UploadCloneAudioRequest{Filename: "sample.mp3"})
+		if err == nil {
+			t.Fatal("UploadCloneAudio() error = nil, want non-nil")
+		}
+		if called.Load() {
+			t.Fatal("server called for nil upload content, want local validation")
+		}
+	})
+}
+
 func newVoiceTestClient(t *testing.T, srv *httptest.Server, retry transport.RetryConfig) *Client {
 	t.Helper()
 

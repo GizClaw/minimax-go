@@ -2,8 +2,9 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/voice-cloning-uploadcloneaudio.md
 - Endpoint: `POST /v1/files/upload`
-- SDK status: `Partial`
-- Local code: generic `File.Upload` in `file.go`.
+- SDK status: `Implemented`
+- Local code: `Voice.UploadCloneAudio` in `voice.go`, backed by `File.Upload`;
+  tests in `voice_test.go`; example use in `examples/voice/clone`.
 
 ## Purpose
 
@@ -11,11 +12,6 @@ Upload source audio for voice cloning and receive a `file_id`.
 
 ## Current SDK shape
 
-The generic upload API can send audio bytes and a `purpose` value, but there is
-no dedicated helper for clone-audio upload semantics.
-
-## Development notes
-
-Add a convenience wrapper only if it removes ambiguity around the official
-purpose value, validation, and supported audio formats.
-
+The typed helper validates filename/content, reads the provided `io.Reader`, and
+uploads with official purpose `voice_clone`. `File.Upload` remains available for
+advanced or custom purpose usage.

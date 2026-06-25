@@ -36,6 +36,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runHTTPCommand(subArgs, stdout, stderr)
 	case "stream":
 		return runStreamCommand(subArgs, stdout, stderr)
+	case "websocket", "ws":
+		return runWebSocketCommand(subArgs, stdout, stderr)
 	case "async":
 		return runAsyncCommand(subArgs, stdout, stderr)
 	case "task":
@@ -53,12 +55,14 @@ func printRootUsage(out io.Writer) {
 	fmt.Fprintln(out, "Commands:")
 	fmt.Fprintln(out, "  async   submit async task or query existing task_id")
 	fmt.Fprintln(out, "  stream  synthesize by SSE stream and write merged audio")
+	fmt.Fprintln(out, "  websocket synthesize by official WebSocket protocol")
 	fmt.Fprintln(out, "  task    alias of async task query mode (deprecated)")
 	fmt.Fprintln(out, "  http    synthesize via synchronous HTTP and write audio")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Examples:")
 	fmt.Fprintln(out, "  go run ./examples/speech async -text \"hello\" -voice-id \"male-qn-qingse\"")
 	fmt.Fprintln(out, "  go run ./examples/speech stream -text \"hello\" -voice-id \"male-qn-qingse\"")
+	fmt.Fprintln(out, "  go run ./examples/speech websocket -text \"hello\" -voice-id \"male-qn-qingse\"")
 	fmt.Fprintln(out, "  go run ./examples/speech async -task-id 123456789 -wait")
 	fmt.Fprintln(out, "  go run ./examples/speech http -text \"hello\" -voice-id \"male-qn-qingse\"")
 	fmt.Fprintln(out)

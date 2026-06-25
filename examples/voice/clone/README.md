@@ -6,7 +6,7 @@ Supported source inputs:
 
 - `-audio-url`
 - `-file-id`
-- `-input` (local file upload first, then clone by returned `file_id`)
+- `-input` (local file upload first through `Voice.UploadCloneAudio`, then clone by returned `file_id`)
 
 ## Quick start
 
@@ -57,7 +57,7 @@ go run ./examples/voice/clone -h
 - `-input`: local file path for upload-then-clone
 - `-file-name`: uploaded file name override for `-input`
 - `-content-type`: MIME type override for `-input` upload
-- `-purpose`: upload purpose (default: `voice_clone`)
+- `-purpose`: upload purpose (default: `voice_clone`; default path uses `Voice.UploadCloneAudio`)
 - `-timeout`: request timeout (default: `30s`)
 - `-json`: print response as formatted JSON
 

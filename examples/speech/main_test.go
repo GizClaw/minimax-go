@@ -224,6 +224,104 @@ func TestRunTaskAliasHelp(t *testing.T) {
 	}
 }
 
+func TestRunWebSocketHelp(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run([]string{"websocket", "-h"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run(websocket -h) error = %v, want nil", err)
+	}
+
+	if !strings.Contains(stderr.String(), "Usage: go run ./examples/speech websocket") {
+		t.Fatalf("websocket help = %q, want websocket usage", stderr.String())
+	}
+}
+
+func TestParseWebSocketOptionsValidation(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	_, err := parseWebSocketOptions([]string{"-timeout", "0s"}, &output)
+	if err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("parseWebSocketOptions(timeout=0) error = %v, want timeout validation", err)
+	}
+}
+
+func TestParseSpeechFieldOptions(t *testing.T) {
+	t.Run("http", func(t *testing.T) {
+		var output bytes.Buffer
+		opts, err := parseHTTPOptions([]string{
+			"-language-boost", "English",
+			"-output-format", "url",
+			"-audio-format", "mp3",
+			"-sample-rate", "32000",
+			"-bitrate", "128000",
+			"-channel", "1",
+		}, &output)
+		if err != nil {
+			t.Fatalf("parseHTTPOptions() error = %v, want nil", err)
+		}
+		assertSpeechFieldOptions(t, opts.languageBoost, opts.outputFormat, opts.audioFormat, opts.sampleRate, opts.bitrate, opts.channel)
+	})
+
+	t.Run("async", func(t *testing.T) {
+		var output bytes.Buffer
+		opts, err := parseAsyncOptions([]string{
+			"-text", "hello",
+			"-language-boost", "English",
+			"-output-format", "url",
+			"-audio-format", "mp3",
+			"-sample-rate", "32000",
+			"-bitrate", "128000",
+			"-channel", "1",
+		}, &output)
+		if err != nil {
+			t.Fatalf("parseAsyncOptions() error = %v, want nil", err)
+		}
+		assertSpeechFieldOptions(t, opts.languageBoost, opts.outputFormat, opts.audioFormat, opts.sampleRate, opts.bitrate, opts.channel)
+	})
+
+	t.Run("websocket", func(t *testing.T) {
+		var output bytes.Buffer
+		opts, err := parseWebSocketOptions([]string{
+			"-language-boost", "English",
+			"-audio-format", "mp3",
+			"-sample-rate", "32000",
+			"-bitrate", "128000",
+			"-channel", "1",
+		}, &output)
+		if err != nil {
+			t.Fatalf("parseWebSocketOptions() error = %v, want nil", err)
+		}
+		assertSpeechFieldOptions(t, opts.languageBoost, "", opts.audioFormat, opts.sampleRate, opts.bitrate, opts.channel)
+	})
+}
+
+func assertSpeechFieldOptions(t *testing.T, languageBoost, outputFormat, audioFormat string, sampleRate, bitrate, channel *int) {
+	t.Helper()
+
+	if languageBoost != "English" {
+		t.Fatalf("languageBoost = %q, want English", languageBoost)
+	}
+	if outputFormat != "" && outputFormat != "url" {
+		t.Fatalf("outputFormat = %q, want url or empty for websocket", outputFormat)
+	}
+	if audioFormat != "mp3" {
+		t.Fatalf("audioFormat = %q, want mp3", audioFormat)
+	}
+	if sampleRate == nil || *sampleRate != 32000 {
+		t.Fatalf("sampleRate = %v, want 32000", sampleRate)
+	}
+	if bitrate == nil || *bitrate != 128000 {
+		t.Fatalf("bitrate = %v, want 128000", bitrate)
+	}
+	if channel == nil || *channel != 1 {
+		t.Fatalf("channel = %v, want 1", channel)
+	}
+}
+
 func TestTaskAliasRequiresTaskID(t *testing.T) {
 	var submitHits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

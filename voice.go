@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,10 +15,15 @@ import (
 )
 
 const (
-	defaultVoiceListPath   = "/v1/get_voice"
-	defaultVoiceDesignPath = "/v1/voice_design"
-	defaultVoiceClonePath  = "/v1/voice_clone"
-	defaultVoiceType       = "all"
+	defaultVoiceListPath          = "/v1/get_voice"
+	defaultVoiceDesignPath        = "/v1/voice_design"
+	defaultVoiceClonePath         = "/v1/voice_clone"
+	defaultVoiceDeletePath        = "/v1/delete_voice"
+	defaultVoiceType              = "all"
+	VoiceUploadPurposeCloneAudio  = "voice_clone"
+	VoiceUploadPurposePromptAudio = "prompt_audio"
+	VoiceDeleteTypeCloning        = "voice_cloning"
+	VoiceDeleteTypeGeneration     = "voice_generation"
 )
 
 type VoiceService struct {
@@ -24,6 +31,7 @@ type VoiceService struct {
 	endpoint       string
 	designEndpoint string
 	cloneEndpoint  string
+	deleteEndpoint string
 }
 
 type ListVoicesRequest struct {
@@ -42,6 +50,23 @@ type CloneVoiceRequest struct {
 	VoiceID  string `json:"voice_id"`
 	AudioURL string `json:"audio_url,omitempty"`
 	FileID   string `json:"file_id,omitempty"`
+}
+
+type DeleteVoiceRequest struct {
+	VoiceID   string `json:"voice_id"`
+	VoiceType string `json:"voice_type,omitempty"`
+}
+
+type UploadCloneAudioRequest struct {
+	Filename    string
+	Content     io.Reader
+	ContentType string
+}
+
+type UploadPromptAudioRequest struct {
+	Filename    string
+	Content     io.Reader
+	ContentType string
 }
 
 type Voice struct {
@@ -75,6 +100,12 @@ type CloneVoiceResponse struct {
 	Raw          map[string]json.RawMessage `json:"-"`
 }
 
+type DeleteVoiceResponse struct {
+	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
+	VoiceID      string                     `json:"voice_id,omitempty"`
+	Raw          map[string]json.RawMessage `json:"-"`
+}
+
 type listVoicesWireRequest struct {
 	VoiceType string `json:"voice_type"`
 	PageSize  *int   `json:"page_size,omitempty"`
@@ -91,6 +122,11 @@ type cloneVoiceWireRequest struct {
 	VoiceID  string          `json:"voice_id"`
 	AudioURL string          `json:"audio_url,omitempty"`
 	FileID   numericStringID `json:"file_id,omitempty"`
+}
+
+type deleteVoiceWireRequest struct {
+	VoiceID   string `json:"voice_id"`
+	VoiceType string `json:"voice_type"`
 }
 
 type numericStringID string
@@ -121,6 +157,12 @@ type cloneVoiceRawResponse struct {
 	TrialAudio   string                     `json:"trial_audio,omitempty"`
 	PreviewAudio string                     `json:"preview_audio,omitempty"`
 	Raw          map[string]json.RawMessage `json:"-"`
+}
+
+type deleteVoiceRawResponse struct {
+	VoiceID  string                     `json:"voice_id,omitempty"`
+	CustomID string                     `json:"custom_voice_id,omitempty"`
+	Raw      map[string]json.RawMessage `json:"-"`
 }
 
 // ListVoices queries available voices with filter and pagination parameters.
@@ -212,6 +254,97 @@ func (s *VoiceService) CloneVoice(ctx context.Context, request *CloneVoiceReques
 	}, nil
 }
 
+// DeleteVoice deletes an account-owned generated or cloned voice.
+func (s *VoiceService) DeleteVoice(ctx context.Context, request DeleteVoiceRequest) (*DeleteVoiceResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("voice service is not initialized")
+	}
+
+	payload, err := buildDeleteVoicePayload(request)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw deleteVoiceRawResponse
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
+		Method: http.MethodPost,
+		Path:   s.resolveDeletePath(),
+		Body:   payload,
+	}, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DeleteVoiceResponse{
+		ResponseMeta: responseMetaFromTransport(meta),
+		VoiceID:      firstNonEmptyValue(raw.VoiceID, raw.CustomID, payload.VoiceID),
+		Raw:          cloneRawMessages(raw.Raw),
+	}, nil
+}
+
+// UploadCloneAudio uploads source audio for voice cloning using the official
+// voice_clone file purpose.
+func (s *VoiceService) UploadCloneAudio(ctx context.Context, request UploadCloneAudioRequest) (*FileUploadResponse, error) {
+	return s.uploadVoiceAudio(ctx, voiceAudioUploadRequest{
+		filename:    request.Filename,
+		content:     request.Content,
+		contentType: request.ContentType,
+		purpose:     VoiceUploadPurposeCloneAudio,
+		label:       "voice clone audio upload",
+	})
+}
+
+// UploadPromptAudio uploads short prompt audio for voice cloning stability using
+// the official prompt_audio file purpose.
+func (s *VoiceService) UploadPromptAudio(ctx context.Context, request UploadPromptAudioRequest) (*FileUploadResponse, error) {
+	return s.uploadVoiceAudio(ctx, voiceAudioUploadRequest{
+		filename:    request.Filename,
+		content:     request.Content,
+		contentType: request.ContentType,
+		purpose:     VoiceUploadPurposePromptAudio,
+		label:       "voice prompt audio upload",
+	})
+}
+
+type voiceAudioUploadRequest struct {
+	filename    string
+	content     io.Reader
+	contentType string
+	purpose     string
+	label       string
+}
+
+func (s *VoiceService) uploadVoiceAudio(ctx context.Context, request voiceAudioUploadRequest) (*FileUploadResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("voice service is not initialized")
+	}
+
+	filename := strings.TrimSpace(request.filename)
+	if filename == "" {
+		return nil, fmt.Errorf("%s filename is empty", request.label)
+	}
+	if request.content == nil {
+		return nil, fmt.Errorf("%s content is nil", request.label)
+	}
+
+	data, err := io.ReadAll(request.content)
+	if err != nil {
+		return nil, fmt.Errorf("%s read content: %w", request.label, err)
+	}
+
+	fileService := &FileService{
+		transport:      s.transport,
+		uploadEndpoint: defaultFileUploadPath,
+		maxUploadBytes: defaultFileMaxUploadBytes,
+	}
+	return fileService.Upload(ctx, FileUploadRequest{
+		Purpose:     request.purpose,
+		FileName:    filename,
+		ContentType: request.contentType,
+		Data:        data,
+	})
+}
+
 func buildDesignVoicePayload(request *DesignVoiceRequest) (designVoiceWireRequest, error) {
 	if request == nil {
 		return designVoiceWireRequest{}, errors.New("design voice request is nil")
@@ -231,6 +364,28 @@ func buildDesignVoicePayload(request *DesignVoiceRequest) (designVoiceWireReques
 		return designVoiceWireRequest{}, errors.New("design voice request preview_text is empty")
 	}
 
+	return payload, nil
+}
+
+func buildDeleteVoicePayload(request DeleteVoiceRequest) (deleteVoiceWireRequest, error) {
+	payload := deleteVoiceWireRequest{
+		VoiceID:   strings.TrimSpace(request.VoiceID),
+		VoiceType: strings.TrimSpace(request.VoiceType),
+	}
+	if payload.VoiceID == "" {
+		return deleteVoiceWireRequest{}, errors.New("delete voice request voice_id is empty")
+	}
+	if payload.VoiceType == "" {
+		payload.VoiceType = VoiceDeleteTypeGeneration
+	}
+	if payload.VoiceType != VoiceDeleteTypeCloning && payload.VoiceType != VoiceDeleteTypeGeneration {
+		return deleteVoiceWireRequest{}, fmt.Errorf(
+			"delete voice request voice_type %q is invalid, want %q or %q",
+			payload.VoiceType,
+			VoiceDeleteTypeCloning,
+			VoiceDeleteTypeGeneration,
+		)
+	}
 	return payload, nil
 }
 
@@ -351,6 +506,15 @@ func (s *VoiceService) resolveClonePath() string {
 	}
 
 	return defaultVoiceClonePath
+}
+
+func (s *VoiceService) resolveDeletePath() string {
+	deletePath := strings.TrimSpace(s.deleteEndpoint)
+	if deletePath != "" {
+		return deletePath
+	}
+
+	return defaultVoiceDeletePath
 }
 
 func collectVoices(raw listVoicesRawResponse) []Voice {
@@ -532,6 +696,35 @@ func (r *cloneVoiceRawResponse) UnmarshalJSON(data []byte) error {
 	delete(raw, "status_msg")
 
 	*r = cloneVoiceRawResponse(parsed)
+	if len(raw) > 0 {
+		r.Raw = raw
+	} else {
+		r.Raw = nil
+	}
+
+	return nil
+}
+
+func (r *deleteVoiceRawResponse) UnmarshalJSON(data []byte) error {
+	type alias deleteVoiceRawResponse
+
+	var parsed alias
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	delete(raw, "voice_id")
+	delete(raw, "custom_voice_id")
+	delete(raw, "base_resp")
+	delete(raw, "status_code")
+	delete(raw, "status_msg")
+
+	*r = deleteVoiceRawResponse(parsed)
 	if len(raw) > 0 {
 		r.Raw = raw
 	} else {

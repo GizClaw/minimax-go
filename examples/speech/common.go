@@ -80,6 +80,24 @@ func optionalEnvFloat64FromKeys(keys ...string) (float64, bool, error) {
 	return 0, false, nil
 }
 
+func optionalEnvIntFromKeys(keys ...string) (int, bool, error) {
+	for _, key := range keys {
+		raw, ok := os.LookupEnv(key)
+		if !ok || strings.TrimSpace(raw) == "" {
+			continue
+		}
+
+		parsed, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			return 0, true, fmt.Errorf("%s: %w", key, err)
+		}
+
+		return parsed, true, nil
+	}
+
+	return 0, false, nil
+}
+
 func optionalEnvBool(key string) (bool, bool, error) {
 	raw, ok := os.LookupEnv(key)
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -143,6 +161,20 @@ func displayTaskState(state minimax.SpeechTaskState) string {
 	}
 
 	return string(state)
+}
+
+func newSpeechAudioSetting(format string, sampleRate, bitrate, channel *int) *minimax.SpeechAudioSetting {
+	format = strings.TrimSpace(format)
+	if format == "" && sampleRate == nil && bitrate == nil && channel == nil {
+		return nil
+	}
+
+	return &minimax.SpeechAudioSetting{
+		SampleRate: sampleRate,
+		Bitrate:    bitrate,
+		Format:     format,
+		Channel:    channel,
+	}
 }
 
 func resolveTaskFailureMessage(resp *minimax.SpeechTaskStatusResponse) string {
