@@ -2,14 +2,21 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/video-generation-s2v.md
 - Endpoint: `POST /v1/video_generation`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `video.go`, `video_test.go`, `examples/video/`
 
 ## Purpose
 
 Create a video task using a subject reference image plus prompt.
 
-## Development notes
+## Implementation notes
 
-Add a dedicated request type if subject reference fields differ from I2V.
+Implemented as `Client.Video.CreateSubjectReferenceVideo`.
 
+The official OpenAPI schema currently requires `model` and
+`subject_reference`. `prompt`, `prompt_optimizer`, `callback_url`, and
+`aigc_watermark` are optional request fields.
+
+The SDK models `subject_reference` as a slice of `VideoSubjectReference` values
+to preserve the wire shape. MiniMax currently documents support for one
+`character` subject and one image.

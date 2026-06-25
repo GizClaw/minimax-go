@@ -31,6 +31,7 @@ type options struct {
 	prompt           string
 	firstFrameImage  string
 	lastFrameImage   string
+	subjectRefs      subjectReferenceFlags
 	taskID           string
 	duration         int
 	resolution       string
@@ -85,12 +86,19 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 	fs := flag.NewFlagSet("video", flag.ContinueOnError)
 	fs.SetOutput(out)
 
+	if rawSubjectReference := strings.TrimSpace(os.Getenv("MINIMAX_VIDEO_SUBJECT_REFERENCE")); rawSubjectReference != "" {
+		if err := opts.subjectRefs.Set(rawSubjectReference); err != nil {
+			return options{}, err
+		}
+	}
+
 	fs.StringVar(&opts.apiKey, "api-key", opts.apiKey, "Minimax API key (or env MINIMAX_API_KEY)")
 	fs.StringVar(&opts.baseURL, "base-url", opts.baseURL, "Minimax API base URL (env: MINIMAX_BASE_URL)")
 	fs.StringVar(&opts.model, "model", opts.model, "Video model for submit mode (env: MINIMAX_VIDEO_MODEL)")
 	fs.StringVar(&opts.prompt, "prompt", opts.prompt, "Prompt for submit mode (env: MINIMAX_VIDEO_PROMPT)")
 	fs.StringVar(&opts.firstFrameImage, "first-frame-image", opts.firstFrameImage, "First frame image URL or Data URL for image-to-video or first-last-frame submit mode")
 	fs.StringVar(&opts.lastFrameImage, "last-frame-image", opts.lastFrameImage, "Last frame image URL or Data URL for first-last-frame submit mode")
+	fs.Var(&opts.subjectRefs, "subject-reference", "Subject reference as type=image_url, for example character=https://example.com/person.jpg")
 	fs.StringVar(&opts.taskID, "task-id", opts.taskID, "Query existing task_id instead of submitting a new task")
 	fs.IntVar(&opts.duration, "duration", opts.duration, "Video duration in seconds for submit mode")
 	fs.StringVar(&opts.resolution, "resolution", opts.resolution, "Video resolution for submit mode")
@@ -109,6 +117,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		fs.PrintDefaults()
 		fmt.Fprintf(fs.Output(), "\nModes:\n")
 		fmt.Fprintf(fs.Output(), "  - submit mode: no -task-id, creates a text-to-video task\n")
+		fmt.Fprintf(fs.Output(), "  - subject-reference mode: add -subject-reference character=https://example.com/person.jpg\n")
 		fmt.Fprintf(fs.Output(), "  - image-to-video mode: add -first-frame-image to submit with an initial image\n")
 		fmt.Fprintf(fs.Output(), "  - first-last-frame mode: add -last-frame-image, optionally with -first-frame-image\n")
 		fmt.Fprintf(fs.Output(), "  - task mode: set -task-id, queries an existing video task\n")
@@ -136,7 +145,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		if opts.model == "" {
 			return options{}, errors.New("submit mode requires model")
 		}
-		if opts.firstFrameImage == "" && opts.lastFrameImage == "" && opts.prompt == "" {
+		if len(opts.subjectRefs) == 0 && opts.firstFrameImage == "" && opts.lastFrameImage == "" && opts.prompt == "" {
 			return options{}, errors.New("submit mode requires prompt")
 		}
 	}
@@ -212,6 +221,21 @@ func run(opts options, out io.Writer) error {
 }
 
 func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) (*minimax.VideoTaskCreateResponse, error) {
+	if len(opts.subjectRefs) > 0 {
+		submitted, err := client.Video.CreateSubjectReferenceVideo(ctx, minimax.VideoSubjectReferenceRequest{
+			Model:             opts.model,
+			SubjectReferences: opts.subjectRefs.VideoSubjectReferences(),
+			Prompt:            opts.prompt,
+			PromptOptimizer:   boolPtr(opts.promptOptimizer),
+			CallbackURL:       opts.callbackURL,
+			AIGCWatermark:     boolPtr(opts.aigcWatermark),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("Video.CreateSubjectReferenceVideo failed: %w", err)
+		}
+		return submitted, nil
+	}
+
 	if opts.lastFrameImage != "" {
 		submitted, err := client.Video.CreateFirstLastFrameVideo(ctx, minimax.VideoFirstLastFrameRequest{
 			Model:           opts.model,
@@ -293,6 +317,7 @@ func trimOptions(opts *options) {
 	opts.prompt = strings.TrimSpace(opts.prompt)
 	opts.firstFrameImage = strings.TrimSpace(opts.firstFrameImage)
 	opts.lastFrameImage = strings.TrimSpace(opts.lastFrameImage)
+	opts.subjectRefs.Trim()
 	opts.taskID = strings.TrimSpace(opts.taskID)
 	opts.resolution = strings.TrimSpace(opts.resolution)
 	opts.callbackURL = strings.TrimSpace(opts.callbackURL)
@@ -326,6 +351,58 @@ func writeBodyToFile(body io.Reader, output string) error {
 	}
 
 	return nil
+}
+
+type subjectReferenceFlags []subjectReferenceFlag
+
+type subjectReferenceFlag struct {
+	referenceType string
+	imageURL      string
+}
+
+func (f *subjectReferenceFlags) String() string {
+	if f == nil || len(*f) == 0 {
+		return ""
+	}
+
+	values := make([]string, 0, len(*f))
+	for _, reference := range *f {
+		values = append(values, reference.referenceType+"="+reference.imageURL)
+	}
+	return strings.Join(values, ",")
+}
+
+func (f *subjectReferenceFlags) Set(value string) error {
+	referenceType, imageURL, ok := strings.Cut(value, "=")
+	referenceType = strings.TrimSpace(referenceType)
+	imageURL = strings.TrimSpace(imageURL)
+	if !ok || referenceType == "" || imageURL == "" {
+		return errors.New("subject-reference must be formatted as type=image_url")
+	}
+
+	*f = append(*f, subjectReferenceFlag{
+		referenceType: referenceType,
+		imageURL:      imageURL,
+	})
+	return nil
+}
+
+func (f *subjectReferenceFlags) Trim() {
+	for index := range *f {
+		(*f)[index].referenceType = strings.TrimSpace((*f)[index].referenceType)
+		(*f)[index].imageURL = strings.TrimSpace((*f)[index].imageURL)
+	}
+}
+
+func (f subjectReferenceFlags) VideoSubjectReferences() []minimax.VideoSubjectReference {
+	references := make([]minimax.VideoSubjectReference, 0, len(f))
+	for _, reference := range f {
+		references = append(references, minimax.VideoSubjectReference{
+			Type:  reference.referenceType,
+			Image: []string{reference.imageURL},
+		})
+	}
+	return references
 }
 
 func envOrDefault(key, defaultValue string) string {

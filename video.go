@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -71,6 +72,22 @@ type VideoFirstLastFrameRequest struct {
 	Resolution      string `json:"resolution,omitempty"`
 	CallbackURL     string `json:"callback_url,omitempty"`
 	AIGCWatermark   *bool  `json:"aigc_watermark,omitempty"`
+}
+
+// VideoSubjectReferenceRequest contains parameters for MiniMax subject-reference video task creation.
+type VideoSubjectReferenceRequest struct {
+	Model             string                  `json:"model"`
+	SubjectReferences []VideoSubjectReference `json:"subject_reference"`
+	Prompt            string                  `json:"prompt,omitempty"`
+	PromptOptimizer   *bool                   `json:"prompt_optimizer,omitempty"`
+	CallbackURL       string                  `json:"callback_url,omitempty"`
+	AIGCWatermark     *bool                   `json:"aigc_watermark,omitempty"`
+}
+
+// VideoSubjectReference describes one subject reference for subject-reference video generation.
+type VideoSubjectReference struct {
+	Type  string   `json:"type"`
+	Image []string `json:"image"`
 }
 
 type VideoTaskCreateResponse struct {
@@ -183,6 +200,20 @@ func (s *VideoService) CreateFirstLastFrameVideo(ctx context.Context, request Vi
 	return s.createTask(ctx, request, "video first-last-frame")
 }
 
+// CreateSubjectReferenceVideo creates an async subject-reference video generation task.
+func (s *VideoService) CreateSubjectReferenceVideo(ctx context.Context, request VideoSubjectReferenceRequest) (*VideoTaskCreateResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("video service is not initialized")
+	}
+
+	normalizeVideoSubjectReferenceRequest(&request)
+	if err := validateVideoSubjectReferenceRequest(request); err != nil {
+		return nil, err
+	}
+
+	return s.createTask(ctx, request, "video subject-reference")
+}
+
 func (s *VideoService) createTask(ctx context.Context, request any, prefix string) (*VideoTaskCreateResponse, error) {
 	var raw videoTaskCreateRawResponse
 	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
@@ -274,6 +305,18 @@ func normalizeVideoFirstLastFrameRequest(request *VideoFirstLastFrameRequest) {
 	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
 }
 
+func normalizeVideoSubjectReferenceRequest(request *VideoSubjectReferenceRequest) {
+	request.Model = strings.TrimSpace(request.Model)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
+	for referenceIndex := range request.SubjectReferences {
+		request.SubjectReferences[referenceIndex].Type = strings.TrimSpace(request.SubjectReferences[referenceIndex].Type)
+		for imageIndex := range request.SubjectReferences[referenceIndex].Image {
+			request.SubjectReferences[referenceIndex].Image[imageIndex] = strings.TrimSpace(request.SubjectReferences[referenceIndex].Image[imageIndex])
+		}
+	}
+}
+
 func validateVideoTextToVideoRequest(request VideoTextToVideoRequest) error {
 	if request.Model == "" {
 		return errors.New("video text-to-video request model is empty")
@@ -302,6 +345,30 @@ func validateVideoFirstLastFrameRequest(request VideoFirstLastFrameRequest) erro
 	}
 	if request.LastFrameImage == "" {
 		return errors.New("video first-last-frame request last_frame_image is empty")
+	}
+
+	return nil
+}
+
+func validateVideoSubjectReferenceRequest(request VideoSubjectReferenceRequest) error {
+	if request.Model == "" {
+		return errors.New("video subject-reference request model is empty")
+	}
+	if len(request.SubjectReferences) == 0 {
+		return errors.New("video subject-reference request subject_reference is empty")
+	}
+	for referenceIndex, reference := range request.SubjectReferences {
+		if reference.Type == "" {
+			return fmt.Errorf("video subject-reference request subject_reference[%d].type is empty", referenceIndex)
+		}
+		if len(reference.Image) == 0 {
+			return fmt.Errorf("video subject-reference request subject_reference[%d].image is empty", referenceIndex)
+		}
+		for imageIndex, image := range reference.Image {
+			if image == "" {
+				return fmt.Errorf("video subject-reference request subject_reference[%d].image[%d] is empty", referenceIndex, imageIndex)
+			}
+		}
 	}
 
 	return nil

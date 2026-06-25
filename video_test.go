@@ -573,6 +573,258 @@ func TestVideoCreateFirstLastFrameVideo(t *testing.T) {
 	})
 }
 
+func TestVideoCreateSubjectReferenceVideo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success creates subject-reference task", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s, want POST", r.Method)
+			}
+			if r.URL.Path != defaultVideoGenerationPath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultVideoGenerationPath)
+			}
+
+			var payload VideoSubjectReferenceRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "S2V-01" {
+				t.Fatalf("payload.Model = %q, want S2V-01", payload.Model)
+			}
+			if payload.Prompt != "A girl runs toward the camera and smiles" {
+				t.Fatalf("payload.Prompt = %q, want trimmed prompt", payload.Prompt)
+			}
+			if payload.PromptOptimizer == nil || *payload.PromptOptimizer {
+				t.Fatalf("payload.PromptOptimizer = %v, want explicit false", payload.PromptOptimizer)
+			}
+			if payload.CallbackURL != "https://callback.example.com/video" {
+				t.Fatalf("payload.CallbackURL = %q, want trimmed callback URL", payload.CallbackURL)
+			}
+			if payload.AIGCWatermark == nil || !*payload.AIGCWatermark {
+				t.Fatalf("payload.AIGCWatermark = %v, want explicit true", payload.AIGCWatermark)
+			}
+			if len(payload.SubjectReferences) != 1 {
+				t.Fatalf("len(payload.SubjectReferences) = %d, want 1", len(payload.SubjectReferences))
+			}
+			reference := payload.SubjectReferences[0]
+			if reference.Type != "character" {
+				t.Fatalf("reference.Type = %q, want character", reference.Type)
+			}
+			if len(reference.Image) != 1 || reference.Image[0] != "https://example.com/person.png" {
+				t.Fatalf("reference.Image = %#v, want one trimmed image URL", reference.Image)
+			}
+
+			w.Header().Set("X-Trace-ID", "trace-video-s2v")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"task_id":"106916112212035","extra":"kept","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: " S2V-01 ",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: " character ", Image: []string{" https://example.com/person.png "}},
+			},
+			Prompt:          " A girl runs toward the camera and smiles ",
+			PromptOptimizer: videoBoolPtr(false),
+			CallbackURL:     " https://callback.example.com/video ",
+			AIGCWatermark:   videoBoolPtr(true),
+		})
+		if err != nil {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212035" {
+			t.Fatalf("response.TaskID = %q, want 106916112212035", response.TaskID)
+		}
+		if response.ResponseMeta.TraceID != "trace-video-s2v" {
+			t.Fatalf("TraceID = %q, want trace-video-s2v", response.ResponseMeta.TraceID)
+		}
+		if _, ok := response.Raw["extra"]; !ok {
+			t.Fatalf("response.Raw missing extra field: %+v", response.Raw)
+		}
+	})
+
+	t.Run("subject reference without prompt is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if _, ok := payload["subject_reference"]; !ok {
+				t.Fatalf("payload = %+v, want subject_reference", payload)
+			}
+			if _, ok := payload["prompt"]; ok {
+				t.Fatalf("payload = %+v, want omitted empty prompt", payload)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"task_id":106916112212035},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character", Image: []string{"https://example.com/person.png"}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212035" {
+			t.Fatalf("response.TaskID = %q, want 106916112212035", response.TaskID)
+		}
+	})
+
+	t.Run("empty model fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character", Image: []string{"https://example.com/person.png"}},
+			},
+		})
+		if err == nil {
+			t.Fatal("CreateSubjectReferenceVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "model is empty") {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want model validation error", err)
+		}
+	})
+
+	t.Run("empty subject reference fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+		})
+		if err == nil {
+			t.Fatal("CreateSubjectReferenceVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "subject_reference is empty") {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want subject_reference validation error", err)
+		}
+	})
+
+	t.Run("empty subject reference type fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: " ", Image: []string{"https://example.com/person.png"}},
+			},
+		})
+		if err == nil {
+			t.Fatal("CreateSubjectReferenceVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "subject_reference[0].type is empty") {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want type validation error", err)
+		}
+	})
+
+	t.Run("empty subject reference image list fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character"},
+			},
+		})
+		if err == nil {
+			t.Fatal("CreateSubjectReferenceVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "subject_reference[0].image is empty") {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want image validation error", err)
+		}
+	})
+
+	t.Run("empty subject reference image item fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character", Image: []string{" "}},
+			},
+		})
+		if err == nil {
+			t.Fatal("CreateSubjectReferenceVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "subject_reference[0].image[0] is empty") {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want image item validation error", err)
+		}
+	})
+
+	t.Run("base_resp non-zero returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid subject reference"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		_, err := client.Video.CreateSubjectReferenceVideo(context.Background(), VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character", Image: []string{"https://example.com/person.png"}},
+			},
+		})
+		assertAPIStatus(t, err, 2013, "invalid subject reference")
+	})
+
+	t.Run("context canceled is preserved", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{BaseURL: "https://api.minimax.io"})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = client.Video.CreateSubjectReferenceVideo(ctx, VideoSubjectReferenceRequest{
+			Model: "S2V-01",
+			SubjectReferences: []VideoSubjectReference{
+				{Type: "character", Image: []string{"https://example.com/person.png"}},
+			},
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CreateSubjectReferenceVideo() error = %v, want context canceled", err)
+		}
+	})
+}
+
 func TestVideoGetTask(t *testing.T) {
 	t.Parallel()
 

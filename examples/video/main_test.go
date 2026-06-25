@@ -113,6 +113,46 @@ func TestParseOptions(t *testing.T) {
 			t.Fatalf("prompt = %q, want empty prompt", opts.prompt)
 		}
 	})
+
+	t.Run("subject-reference mode does not require prompt", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := parseOptions([]string{
+			"-model", " S2V-01 ",
+			"-subject-reference", " character=https://example.com/person.png ",
+			"-prompt", " ",
+		}, &bytes.Buffer{})
+		if err != nil {
+			t.Fatalf("parseOptions() error = %v, want nil", err)
+		}
+		if opts.model != "S2V-01" {
+			t.Fatalf("model = %q, want S2V-01", opts.model)
+		}
+		if opts.prompt != "" {
+			t.Fatalf("prompt = %q, want empty prompt", opts.prompt)
+		}
+		references := opts.subjectRefs.VideoSubjectReferences()
+		if len(references) != 1 {
+			t.Fatalf("len(references) = %d, want 1", len(references))
+		}
+		if references[0].Type != "character" || len(references[0].Image) != 1 || references[0].Image[0] != "https://example.com/person.png" {
+			t.Fatalf("references = %+v, want character subject reference", references)
+		}
+	})
+
+	t.Run("invalid subject-reference fails", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parseOptions([]string{
+			"-subject-reference", " character ",
+		}, &bytes.Buffer{})
+		if err == nil {
+			t.Fatal("parseOptions() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "subject-reference must be formatted as type=image_url") {
+			t.Fatalf("parseOptions() error = %v, want subject-reference validation", err)
+		}
+	})
 }
 
 func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
@@ -427,6 +467,116 @@ func TestRunSubmitsFirstLastFrameVideoWithoutPromptOrFirstFrame(t *testing.T) {
 
 	output := stdout.String()
 	if !strings.Contains(output, "submitted task_id=task_fl2v_no_prompt") {
+		t.Fatalf("output = %q, want submitted task", output)
+	}
+}
+
+func TestRunSubmitsSubjectReferenceVideo(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/v1/video_generation":
+			if r.Method != http.MethodPost {
+				t.Fatalf("submit method = %s, want POST", r.Method)
+			}
+
+			var payload struct {
+				Model             string `json:"model"`
+				SubjectReferences []struct {
+					Type  string   `json:"type"`
+					Image []string `json:"image"`
+				} `json:"subject_reference"`
+				Prompt          string `json:"prompt,omitempty"`
+				PromptOptimizer bool   `json:"prompt_optimizer"`
+				CallbackURL     string `json:"callback_url,omitempty"`
+				AIGCWatermark   bool   `json:"aigc_watermark"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "S2V-01" || payload.Prompt != "smile and wave" || !payload.PromptOptimizer || payload.CallbackURL != "https://callback.example.com/video" || payload.AIGCWatermark {
+				t.Fatalf("payload = %+v, want expected subject-reference submit payload", payload)
+			}
+			if len(payload.SubjectReferences) != 1 {
+				t.Fatalf("len(payload.SubjectReferences) = %d, want 1", len(payload.SubjectReferences))
+			}
+			reference := payload.SubjectReferences[0]
+			if reference.Type != "character" || len(reference.Image) != 1 || reference.Image[0] != "https://example.com/person.png" {
+				t.Fatalf("reference = %+v, want expected subject reference", reference)
+			}
+
+			_, _ = w.Write([]byte(`{"task_id":"task_s2v_123","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	err := run(options{
+		apiKey:          "test-key",
+		baseURL:         srv.URL,
+		model:           "S2V-01",
+		subjectRefs:     subjectReferenceFlags{{referenceType: "character", imageURL: "https://example.com/person.png"}},
+		prompt:          "smile and wave",
+		callbackURL:     "https://callback.example.com/video",
+		promptOptimizer: true,
+		timeout:         30 * time.Second,
+		pollInterval:    time.Millisecond,
+	}, &stdout)
+	if err != nil {
+		t.Fatalf("run() error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "submitted task_id=task_s2v_123") {
+		t.Fatalf("output = %q, want submitted task", output)
+	}
+}
+
+func TestRunSubmitsSubjectReferenceVideoWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path != "/v1/video_generation" {
+			t.Fatalf("path = %s, want /v1/video_generation", r.URL.Path)
+		}
+
+		var payload map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if _, ok := payload["subject_reference"]; !ok {
+			t.Fatalf("payload = %+v, want subject_reference", payload)
+		}
+		if _, ok := payload["prompt"]; ok {
+			t.Fatalf("payload = %+v, want omitted empty prompt", payload)
+		}
+
+		_, _ = w.Write([]byte(`{"task_id":"task_s2v_no_prompt","base_resp":{"status_code":0,"status_msg":"success"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	err := run(options{
+		apiKey:       "test-key",
+		baseURL:      srv.URL,
+		model:        "S2V-01",
+		subjectRefs:  subjectReferenceFlags{{referenceType: "character", imageURL: "https://example.com/person.png"}},
+		timeout:      30 * time.Second,
+		pollInterval: time.Millisecond,
+	}, &stdout)
+	if err != nil {
+		t.Fatalf("run() error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "submitted task_id=task_s2v_no_prompt") {
 		t.Fatalf("output = %q, want submitted task", output)
 	}
 }
