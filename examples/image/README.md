@@ -11,6 +11,16 @@ go run ./examples/image \
   -response-format url
 ```
 
+Run an image-to-image request:
+
+```bash
+go run ./examples/image \
+  -model image-01 \
+  -prompt "A girl looking into the distance from a library window" \
+  -aspect-ratio 16:9 \
+  -subject-reference character=https://example.com/reference.png
+```
+
 Save base64 image outputs:
 
 ```bash
