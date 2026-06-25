@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultBaseURL      = "https://api.minimax.io"
+	defaultBaseURL      = "https://api.minimaxi.com"
 	defaultMode         = "generate"
 	defaultModel        = "music-2.6-free"
 	defaultCoverModel   = "music-cover-free"

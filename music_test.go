@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GizClaw/minimax-go/internal/protocol"
 	"github.com/GizClaw/minimax-go/internal/transport"
@@ -347,6 +348,64 @@ func TestMusicPreprocessCover(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("base_resp error returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid audio"}}`))
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.PreprocessCover(context.Background(), MusicCoverPreprocessRequest{
+			Model:    string(MusicModelCover),
+			AudioURL: "https://example.com/a.mp3",
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != 2013 || apiErr.StatusMsg != "invalid audio" {
+			t.Fatalf("PreprocessCover() error = %v, want APIError 2013 invalid audio", err)
+		}
+	})
+
+	t.Run("http error returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.PreprocessCover(context.Background(), MusicCoverPreprocessRequest{
+			Model:    string(MusicModelCover),
+			AudioURL: "https://example.com/a.mp3",
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) || apiErr.HTTPStatus != http.StatusServiceUnavailable {
+			t.Fatalf("PreprocessCover() error = %v, want HTTP APIError 503", err)
+		}
+	})
+
+	t.Run("malformed json returns decode error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{`))
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.PreprocessCover(context.Background(), MusicCoverPreprocessRequest{
+			Model:    string(MusicModelCover),
+			AudioURL: "https://example.com/a.mp3",
+		})
+		if err == nil || !strings.Contains(err.Error(), "decode response body") {
+			t.Fatalf("PreprocessCover() error = %v, want decode error", err)
+		}
+	})
 }
 
 func TestMusicGenerateLyrics(t *testing.T) {
@@ -438,6 +497,61 @@ func TestMusicGenerateLyrics(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("base_resp error returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid mode"}}`))
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.GenerateLyrics(context.Background(), LyricsGenerateRequest{
+			Mode: string(LyricsModeWriteFullSong),
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != 2013 || apiErr.StatusMsg != "invalid mode" {
+			t.Fatalf("GenerateLyrics() error = %v, want APIError 2013 invalid mode", err)
+		}
+	})
+
+	t.Run("http error returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.GenerateLyrics(context.Background(), LyricsGenerateRequest{
+			Mode: string(LyricsModeWriteFullSong),
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) || apiErr.HTTPStatus != http.StatusServiceUnavailable {
+			t.Fatalf("GenerateLyrics() error = %v, want HTTP APIError 503", err)
+		}
+	})
+
+	t.Run("malformed json returns decode error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{`))
+		}))
+		defer srv.Close()
+
+		client := newMusicTestClient(t, srv)
+		_, err := client.Music.GenerateLyrics(context.Background(), LyricsGenerateRequest{
+			Mode: string(LyricsModeWriteFullSong),
+		})
+		if err == nil || !strings.Contains(err.Error(), "decode response body") {
+			t.Fatalf("GenerateLyrics() error = %v, want decode error", err)
+		}
+	})
 }
 
 func TestMusicServiceUninitialized(t *testing.T) {
@@ -470,6 +584,24 @@ func TestMusicContextCancellation(t *testing.T) {
 	_, err := client.Music.Generate(ctx, MusicGenerateRequest{Model: string(MusicModelV26), Lyrics: "hello"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Generate() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestMusicContextTimeout(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := newMusicTestClient(t, srv)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+
+	_, err := client.Music.Generate(ctx, MusicGenerateRequest{Model: string(MusicModelV26), Lyrics: "hello"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Generate() error = %v, want context deadline exceeded", err)
 	}
 }
 

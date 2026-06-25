@@ -50,6 +50,19 @@ func TestParseOptions(t *testing.T) {
 		}
 	})
 
+	t.Run("generate mode defaults to official music base URL", func(t *testing.T) {
+		opts, err := parseOptions([]string{"generate"}, ioDiscard{})
+		if err != nil {
+			t.Fatalf("parseOptions() error = %v, want nil", err)
+		}
+		if defaultBaseURL != "https://api.minimaxi.com" {
+			t.Fatalf("defaultBaseURL = %q, want official music base URL", defaultBaseURL)
+		}
+		if opts.baseURL != defaultBaseURL {
+			t.Fatalf("opts.baseURL = %q, want %q", opts.baseURL, defaultBaseURL)
+		}
+	})
+
 	t.Run("cover defaults cover model", func(t *testing.T) {
 		opts, err := parseOptions([]string{"cover", "-api-key", "test-key", "-audio-url", "https://example.com/a.mp3"}, ioDiscard{})
 		if err != nil {
