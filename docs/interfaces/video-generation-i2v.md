@@ -2,15 +2,21 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/video-generation-i2v.md
 - Endpoint: `POST /v1/video_generation`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `video.go`, `video_test.go`, `examples/video/`
 
 ## Purpose
 
-Create an async video generation task from an image plus prompt.
+Create an async video generation task from an image plus optional prompt.
 
 ## Development notes
 
-Share the task creation response with T2V. Model image input fields explicitly
-after checking the latest official schema.
+Implemented as `Client.Video.CreateImageToVideo`.
 
+The SDK reuses the existing video task creation response mapping and transport
+behavior. The first-frame input is modeled explicitly as `FirstFrameImage` and
+sent through the official `first_frame_image` wire field.
+
+The method validates required `model` and `first_frame_image` fields
+client-side, trims string fields consistently with text-to-video, and preserves
+optional pointer booleans so explicit `false` values are sent.

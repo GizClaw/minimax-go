@@ -175,6 +175,219 @@ func TestVideoCreateTextToVideo(t *testing.T) {
 	})
 }
 
+func TestVideoCreateImageToVideo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success creates image-to-video task", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s, want POST", r.Method)
+			}
+			if r.URL.Path != defaultVideoGenerationPath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultVideoGenerationPath)
+			}
+
+			var payload VideoImageToVideoRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "MiniMax-Hailuo-2.3" {
+				t.Fatalf("payload.Model = %q, want MiniMax-Hailuo-2.3", payload.Model)
+			}
+			if payload.FirstFrameImage != "https://example.com/frame.png" {
+				t.Fatalf("payload.FirstFrameImage = %q, want trimmed image URL", payload.FirstFrameImage)
+			}
+			if payload.Prompt != "A mouse runs toward the camera" {
+				t.Fatalf("payload.Prompt = %q, want trimmed prompt", payload.Prompt)
+			}
+			if payload.PromptOptimizer == nil || *payload.PromptOptimizer {
+				t.Fatalf("payload.PromptOptimizer = %v, want explicit false", payload.PromptOptimizer)
+			}
+			if payload.FastPretreatment == nil || !*payload.FastPretreatment {
+				t.Fatalf("payload.FastPretreatment = %v, want explicit true", payload.FastPretreatment)
+			}
+			if payload.Duration == nil || *payload.Duration != 6 {
+				t.Fatalf("payload.Duration = %v, want 6", payload.Duration)
+			}
+			if payload.Resolution != "1080P" || payload.CallbackURL != "https://callback.example.com/video" {
+				t.Fatalf("payload resolution/callback = %q/%q", payload.Resolution, payload.CallbackURL)
+			}
+			if payload.AIGCWatermark == nil || !*payload.AIGCWatermark {
+				t.Fatalf("payload.AIGCWatermark = %v, want explicit true", payload.AIGCWatermark)
+			}
+
+			w.Header().Set("X-Trace-ID", "trace-video-i2v")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"task_id":"106916112212033","extra":"kept","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:            " MiniMax-Hailuo-2.3 ",
+			FirstFrameImage:  " https://example.com/frame.png ",
+			Prompt:           " A mouse runs toward the camera ",
+			PromptOptimizer:  videoBoolPtr(false),
+			FastPretreatment: videoBoolPtr(true),
+			Duration:         videoIntPtr(6),
+			Resolution:       " 1080P ",
+			CallbackURL:      " https://callback.example.com/video ",
+			AIGCWatermark:    videoBoolPtr(true),
+		})
+		if err != nil {
+			t.Fatalf("CreateImageToVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212033" {
+			t.Fatalf("response.TaskID = %q, want 106916112212033", response.TaskID)
+		}
+		if response.ResponseMeta.TraceID != "trace-video-i2v" {
+			t.Fatalf("TraceID = %q, want trace-video-i2v", response.ResponseMeta.TraceID)
+		}
+		if _, ok := response.Raw["extra"]; !ok {
+			t.Fatalf("response.Raw missing extra field: %+v", response.Raw)
+		}
+	})
+
+	t.Run("nested data task_id is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"task_id":106916112212033},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		if err != nil {
+			t.Fatalf("CreateImageToVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212033" {
+			t.Fatalf("response.TaskID = %q, want 106916112212033", response.TaskID)
+		}
+	})
+
+	t.Run("empty model fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		if err == nil {
+			t.Fatal("CreateImageToVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "model is empty") {
+			t.Fatalf("CreateImageToVideo() error = %v, want model validation error", err)
+		}
+	})
+
+	t.Run("empty first frame image fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: " ",
+		})
+		if err == nil {
+			t.Fatal("CreateImageToVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "first_frame_image is empty") {
+			t.Fatalf("CreateImageToVideo() error = %v, want first_frame_image validation error", err)
+		}
+	})
+
+	t.Run("http 5xx returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"temporary unavailable"}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		_, err := client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		var apiErr *protocol.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("CreateImageToVideo() error type = %T, want *protocol.APIError", err)
+		}
+		if apiErr.HTTPStatus != http.StatusServiceUnavailable {
+			t.Fatalf("apiErr.HTTPStatus = %d, want %d", apiErr.HTTPStatus, http.StatusServiceUnavailable)
+		}
+	})
+
+	t.Run("base_resp non-zero returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid image"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		_, err := client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		assertAPIStatus(t, err, 2013, "invalid image")
+	})
+
+	t.Run("missing task_id fails", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		_, err := client.Video.CreateImageToVideo(context.Background(), VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		if err == nil || !strings.Contains(err.Error(), "response missing task_id") {
+			t.Fatalf("CreateImageToVideo() error = %v, want missing task_id error", err)
+		}
+	})
+
+	t.Run("context canceled is preserved", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{BaseURL: "https://api.minimax.io"})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = client.Video.CreateImageToVideo(ctx, VideoImageToVideoRequest{
+			Model:           "MiniMax-Hailuo-2.3",
+			FirstFrameImage: "https://example.com/frame.png",
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CreateImageToVideo() error = %v, want context canceled", err)
+		}
+	})
+}
+
 func TestVideoGetTask(t *testing.T) {
 	t.Parallel()
 
