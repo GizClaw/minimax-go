@@ -155,6 +155,72 @@ func TestParseOptions(t *testing.T) {
 	})
 }
 
+func TestEnvironmentDefaultHelpers(t *testing.T) {
+	t.Run("string env uses explicit value and default fallback", func(t *testing.T) {
+		t.Setenv("MINIMAX_TEST_STRING", " custom ")
+		if got := envOrDefault("MINIMAX_TEST_STRING", "fallback"); got != " custom " {
+			t.Fatalf("envOrDefault() = %q, want explicit value", got)
+		}
+		if got := envOrDefault("MINIMAX_TEST_STRING_MISSING", "fallback"); got != "fallback" {
+			t.Fatalf("envOrDefault() = %q, want fallback", got)
+		}
+	})
+
+	t.Run("duration env parses valid values and falls back on invalid input", func(t *testing.T) {
+		t.Setenv("MINIMAX_TEST_DURATION", "250ms")
+		if got := envDurationOrDefault("MINIMAX_TEST_DURATION", time.Second); got != 250*time.Millisecond {
+			t.Fatalf("envDurationOrDefault() = %s, want 250ms", got)
+		}
+		t.Setenv("MINIMAX_TEST_DURATION", "-1s")
+		if got := envDurationOrDefault("MINIMAX_TEST_DURATION", time.Second); got != time.Second {
+			t.Fatalf("envDurationOrDefault() = %s, want fallback", got)
+		}
+	})
+
+	t.Run("int env parses valid values and falls back on invalid input", func(t *testing.T) {
+		t.Setenv("MINIMAX_TEST_INT", "42")
+		if got := envIntOrDefault("MINIMAX_TEST_INT", 7); got != 42 {
+			t.Fatalf("envIntOrDefault() = %d, want 42", got)
+		}
+		t.Setenv("MINIMAX_TEST_INT", "nope")
+		if got := envIntOrDefault("MINIMAX_TEST_INT", 7); got != 7 {
+			t.Fatalf("envIntOrDefault() = %d, want fallback", got)
+		}
+	})
+
+	t.Run("bool env parses true false and falls back on invalid input", func(t *testing.T) {
+		t.Setenv("MINIMAX_TEST_BOOL", "yes")
+		if got := envBoolOrDefault("MINIMAX_TEST_BOOL", false); !got {
+			t.Fatal("envBoolOrDefault() = false, want true")
+		}
+		t.Setenv("MINIMAX_TEST_BOOL", "off")
+		if got := envBoolOrDefault("MINIMAX_TEST_BOOL", true); got {
+			t.Fatal("envBoolOrDefault() = true, want false")
+		}
+		t.Setenv("MINIMAX_TEST_BOOL", "maybe")
+		if got := envBoolOrDefault("MINIMAX_TEST_BOOL", true); !got {
+			t.Fatal("envBoolOrDefault() = false, want fallback true")
+		}
+	})
+}
+
+func TestSubjectReferenceFlagsString(t *testing.T) {
+	t.Parallel()
+
+	var empty subjectReferenceFlags
+	if got := empty.String(); got != "" {
+		t.Fatalf("empty.String() = %q, want empty", got)
+	}
+
+	references := subjectReferenceFlags{
+		{referenceType: "character", imageURL: "https://example.com/a.png"},
+		{referenceType: "character", imageURL: "https://example.com/b.png"},
+	}
+	if got := references.String(); got != "character=https://example.com/a.png,character=https://example.com/b.png" {
+		t.Fatalf("references.String() = %q, want joined references", got)
+	}
+}
+
 func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
 	t.Parallel()
 
@@ -259,6 +325,45 @@ func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
 	}
 	if string(written) != "fake mp4 data" {
 		t.Fatalf("output file = %q, want fake mp4 data", string(written))
+	}
+}
+
+func TestRunQueriesExistingTaskAsJSON(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path != "/v1/query/video_generation" {
+			t.Fatalf("path = %s, want /v1/query/video_generation", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("task_id"); got != "task_existing" {
+			t.Fatalf("task_id query = %q, want task_existing", got)
+		}
+
+		_, _ = w.Write([]byte(`{"task_id":"task_existing","status":"Processing","base_resp":{"status_code":0,"status_msg":"success"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	err := run(options{
+		apiKey:       "test-key",
+		baseURL:      srv.URL,
+		taskID:       "task_existing",
+		timeout:      30 * time.Second,
+		pollInterval: time.Millisecond,
+		asJSON:       true,
+	}, &stdout)
+	if err != nil {
+		t.Fatalf("run() error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "task_id=task_existing status=processing raw_status=Processing file_id=") {
+		t.Fatalf("output = %q, want task status line", output)
+	}
+	if !strings.Contains(output, `"task_id": "task_existing"`) || !strings.Contains(output, `"status": "processing"`) {
+		t.Fatalf("output = %q, want formatted JSON response", output)
 	}
 }
 

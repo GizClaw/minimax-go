@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -904,6 +905,31 @@ func TestVideoGetTask(t *testing.T) {
 		}
 		if response.Status != VideoTaskStateFailed || response.FailureCode != "1027" || response.FailureMsg != "unsafe output" {
 			t.Fatalf("response = %+v, want failed task with failure details", response)
+		}
+	})
+
+	t.Run("failure-like status wins over success substring", func(t *testing.T) {
+		t.Parallel()
+
+		for _, status := range []string{"Unsuccessful", "CompletedWithError"} {
+			t.Run(status, func(t *testing.T) {
+				t.Parallel()
+
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"task_id":"task_failed","status":` + strconv.Quote(status) + `,"base_resp":{"status_code":0,"status_msg":"success"}}`))
+				}))
+				defer srv.Close()
+
+				client := newVideoTestClient(t, srv)
+				response, err := client.Video.GetTask(context.Background(), "task_failed")
+				if err != nil {
+					t.Fatalf("GetTask() error = %v, want nil", err)
+				}
+				if response.Status != VideoTaskStateFailed || response.RawStatus != status {
+					t.Fatalf("status = %q raw=%q, want failed/%s", response.Status, response.RawStatus, status)
+				}
+			})
 		}
 	})
 

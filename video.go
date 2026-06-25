@@ -448,15 +448,24 @@ func normalizeVideoTaskState(status string) VideoTaskState {
 	}
 
 	switch {
-	case strings.Contains(normalized, "success"), strings.Contains(normalized, "complete"), strings.Contains(normalized, "done"), strings.Contains(normalized, "finish"):
-		return VideoTaskStateSucceeded
-	case strings.Contains(normalized, "fail"), strings.Contains(normalized, "error"), strings.Contains(normalized, "cancel"), strings.Contains(normalized, "abort"), strings.Contains(normalized, "expire"), strings.Contains(normalized, "timeout"), strings.Contains(normalized, "reject"):
+	case containsVideoTaskStateToken(normalized, "fail", "error", "unsuccess", "not_success", "cancel", "abort", "expire", "timeout", "reject"):
 		return VideoTaskStateFailed
-	case strings.Contains(normalized, "prepar"), strings.Contains(normalized, "queue"), strings.Contains(normalized, "process"), strings.Contains(normalized, "pend"), strings.Contains(normalized, "running"), strings.Contains(normalized, "progress"):
+	case containsVideoTaskStateToken(normalized, "success", "complete", "done", "finish"):
+		return VideoTaskStateSucceeded
+	case containsVideoTaskStateToken(normalized, "prepar", "queue", "process", "pend", "running", "progress"):
 		return VideoTaskStateProcessing
 	default:
 		return ""
 	}
+}
+
+func containsVideoTaskStateToken(status string, tokens ...string) bool {
+	for _, token := range tokens {
+		if strings.Contains(status, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *videoTaskCreateRawResponse) UnmarshalJSON(data []byte) error {
