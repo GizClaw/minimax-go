@@ -64,7 +64,7 @@ type ImageStyle struct {
 	StyleWeight *float64 `json:"style_weight,omitempty"`
 }
 
-// ImageGenerationResponse is a normalized text-to-image generation response.
+// ImageGenerationResponse is a normalized image generation response.
 type ImageGenerationResponse struct {
 	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
 	ID           string                     `json:"id,omitempty"`
