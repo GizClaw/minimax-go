@@ -83,7 +83,7 @@ type speechWebSocketRawMessage struct {
 	SessionID  string                     `json:"session_id,omitempty"`
 	Event      string                     `json:"event,omitempty"`
 	TraceID    string                     `json:"trace_id,omitempty"`
-	Data       speechWebSocketRawData     `json:"data,omitempty"`
+	Data       speechWebSocketRawData     `json:"data"`
 	ExtraInfo  *speechTaskMetaRaw         `json:"extra_info,omitempty"`
 	BaseResp   *protocol.BaseResp         `json:"base_resp,omitempty"`
 	StatusCode int                        `json:"status_code,omitempty"`
