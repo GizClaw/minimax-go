@@ -74,6 +74,7 @@ go run ./examples/speech stream -h
 go run ./examples/speech http -h
 go run ./examples/voice/list -h
 go run ./examples/file -h
+go run ./examples/video -h
 ```
 
 ## Development checks
