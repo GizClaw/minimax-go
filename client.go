@@ -20,6 +20,7 @@ type Client struct {
 	SpeechAsync *SpeechAsyncService
 	File        *FileService
 	Voice       *VoiceService
+	Video       *VideoService
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -59,6 +60,11 @@ func NewClient(config Config) (*Client, error) {
 		endpoint:       defaultVoiceListPath,
 		designEndpoint: defaultVoiceDesignPath,
 		cloneEndpoint:  defaultVoiceClonePath,
+	}
+	client.Video = &VideoService{
+		transport:      trans,
+		createEndpoint: defaultVideoGenerationPath,
+		queryEndpoint:  defaultVideoQueryPath,
 	}
 
 	return client, nil

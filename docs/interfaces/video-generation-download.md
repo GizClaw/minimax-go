@@ -2,15 +2,15 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/video-generation-download.md
 - Endpoint: `GET /v1/files/retrieve`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented through file management`
+- Local code: `file.go`, `file_test.go`.
 
 ## Purpose
 
 Retrieve video file download information by `file_id`.
 
-## Development notes
+## SDK surface
 
-This should likely reuse `File.Retrieve` instead of duplicating a video-specific
-download method. Add a convenience helper only after file retrieval exists.
-
+Use `File.Retrieve(ctx, fileID)` for metadata and download URL details, or
+`File.Download(ctx, fileID)` for raw content streams. The SDK does not duplicate
+these file endpoints under `VideoService`.

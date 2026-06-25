@@ -17,6 +17,8 @@ Go SDK and examples for MiniMax APIs.
   - list voices
   - voice design
   - voice clone
+- Video APIs
+  - text-to-video task submit/query
 
 ## Roadmap
 
@@ -31,6 +33,8 @@ Implemented:
 - [x] File delete: `File.Delete` deletes a stored file by file ID and purpose.
 - [x] Voice list: `Voice.ListVoices` queries available system, cloned, and generated voices.
 - [x] Voice design: `Voice.DesignVoice` creates a custom voice from a prompt and preview text.
+- [x] Video T2V create: `Video.CreateTextToVideo` creates async text-to-video tasks.
+- [x] Video generation query: `Video.GetTask` queries async video task status and generated file IDs.
 
 Partially implemented:
 
@@ -45,7 +49,7 @@ Planned:
 - [ ] Voice delete API.
 - [ ] Image generation APIs: text-to-image and image-to-image.
 - [ ] Music APIs: lyrics generation, music cover preprocess, and music generation.
-- [ ] Video APIs: text/image/first-last-frame/subject-reference generation, query, download, and video agent tasks.
+- [ ] Remaining video generation APIs: image-to-video, first-last-frame, subject-reference, and video agent tasks.
 - [ ] Text and model APIs: OpenAI/Anthropic-compatible chat, Responses, token estimation, and model list/retrieve endpoints.
 
 ## Requirements
@@ -86,7 +90,8 @@ go test ./...
 - `client.go`: SDK client and service wiring
 - `speech*.go`: speech sync/stream/async APIs
 - `voice.go`: voice-related APIs
-- `file.go`: file upload API
+- `video.go`: video generation task APIs
+- `file.go`: file management APIs
 - `docs/`: official API inventory and implementation status by interface
 - `internal/`: transport/protocol/stream/codec internals
 - `examples/`: runnable CLI demos
