@@ -71,6 +71,13 @@ type StreamRequest struct {
 	Body    any
 }
 
+type RawRequest struct {
+	Method  string
+	Path    string
+	Query   url.Values
+	Headers http.Header
+}
+
 type UploadRequest struct {
 	Method          string
 	Path            string
@@ -171,6 +178,11 @@ type StreamResponse struct {
 	Meta ResponseMeta
 }
 
+type RawResponse struct {
+	Body io.ReadCloser
+	Meta ResponseMeta
+}
+
 // OpenStreamWithMeta opens a streaming connection and returns response metadata.
 func (c *Client) OpenStreamWithMeta(ctx context.Context, request StreamRequest) (*StreamResponse, error) {
 	method := request.Method
@@ -202,6 +214,37 @@ func (c *Client) OpenStreamWithMeta(ctx context.Context, request StreamRequest) 
 
 	if lastErr == nil {
 		lastErr = errors.New("open stream failed")
+	}
+
+	return nil, lastErr
+}
+
+// OpenRawWithMeta opens a raw response body and returns response metadata.
+func (c *Client) OpenRawWithMeta(ctx context.Context, request RawRequest) (*RawResponse, error) {
+	method := request.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= c.retry.MaxAttempts; attempt++ {
+		rawResponse, openErr := c.openRawAttempt(ctx, method, request)
+		if openErr == nil {
+			return rawResponse, nil
+		}
+
+		lastErr = openErr
+		if !c.shouldRetry(openErr) || attempt == c.retry.MaxAttempts {
+			return nil, openErr
+		}
+
+		if sleepErr := c.retry.Sleep(ctx, c.retryDelay(attempt)); sleepErr != nil {
+			return nil, sleepErr
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = errors.New("open raw response failed")
 	}
 
 	return nil, lastErr
@@ -270,6 +313,52 @@ func (c *Client) UploadWithMeta(ctx context.Context, request UploadRequest, out 
 	}
 
 	return meta, nil
+}
+
+func (c *Client) openRawAttempt(ctx context.Context, method string, request RawRequest) (*RawResponse, error) {
+	req, reqErr := c.buildRequest(ctx, method, request.Path, request.Query, nil)
+	if reqErr != nil {
+		return nil, reqErr
+	}
+
+	req.Header.Set("Accept", "*/*")
+	mergeHeaders(req.Header, request.Headers)
+
+	resp, doErr := c.httpClient.Do(req)
+	if doErr != nil {
+		return nil, doErr
+	}
+
+	meta := extractResponseMeta(resp, nil)
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, readResponseError(resp, "read raw error response")
+	}
+
+	if isJSONContentType(resp.Header.Get("Content-Type")) {
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read raw response body: %w", readErr)
+		}
+
+		meta = extractResponseMeta(resp, body)
+		if checkErr := protocol.CheckResponseWithTrace(resp.StatusCode, body, protocol.TraceMeta{
+			RequestID: meta.RequestID,
+			TraceID:   meta.TraceID,
+		}); checkErr != nil {
+			return nil, checkErr
+		}
+
+		return &RawResponse{
+			Body: io.NopCloser(bytes.NewReader(body)),
+			Meta: meta,
+		}, nil
+	}
+
+	return &RawResponse{
+		Body: resp.Body,
+		Meta: meta,
+	}, nil
 }
 
 func (c *Client) openStreamAttempt(ctx context.Context, method string, payload []byte, request StreamRequest) (*StreamResponse, error) {
@@ -587,6 +676,20 @@ func isEventStreamContentType(contentType string) bool {
 	}
 
 	return strings.HasPrefix(strings.ToLower(trimmed), "text/event-stream")
+}
+
+func isJSONContentType(contentType string) bool {
+	trimmed := strings.TrimSpace(contentType)
+	if trimmed == "" {
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(trimmed)
+	if err == nil {
+		return strings.EqualFold(mediaType, "application/json")
+	}
+
+	return strings.HasPrefix(strings.ToLower(trimmed), "application/json")
 }
 
 func sleepWithContext(ctx context.Context, delay time.Duration) error {

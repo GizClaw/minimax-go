@@ -2,17 +2,15 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/file-management-retrieve.md
 - Endpoint: `GET /v1/files/retrieve`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `File.Retrieve` in `file.go`; tests in `file_test.go`.
 
 ## Purpose
 
 Retrieve file metadata, including generated file download information when
 available.
 
-## Development notes
+## Current SDK shape
 
-This is required for async speech and video result workflows. The response
-should normalize `file_id`, URL fields, expiry information, size, and content
-type while keeping raw metadata.
-
+`File.Retrieve` requires a non-empty `file_id` and returns normalized file
+metadata, including `download_url` when present, while preserving raw metadata.
