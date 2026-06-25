@@ -1,7 +1,7 @@
 # Video Example
 
-`examples/video` demonstrates MiniMax text-to-video task creation, task query,
-and the file retrieve handoff.
+`examples/video` demonstrates MiniMax text-to-video and image-to-video task
+creation, task query, and the file retrieve handoff.
 
 ## Quick start
 
@@ -10,6 +10,15 @@ export MINIMAX_API_KEY="your_api_key"
 
 go run ./examples/video \
   -prompt "A small robot paints a glowing green circuit board on a clean desk" \
+  -wait
+```
+
+## Image-to-video
+
+```bash
+go run ./examples/video \
+  -first-frame-image https://example.com/frame.png \
+  -prompt "Camera pushes in as the subject turns toward the light" \
   -wait
 ```
 
@@ -43,6 +52,7 @@ go run ./examples/video -h
 - `-base-url`: API endpoint (default: `https://api.minimax.io`)
 - `-model`: video model for submit mode
 - `-prompt`: text prompt for submit mode
+- `-first-frame-image`: public image URL or Data URL for image-to-video submit mode
 - `-task-id`: query an existing task instead of submitting a new one
 - `-wait`: poll until the task reaches `success` or `failed`
 - `-output`: optional raw video output path after a successful task
@@ -53,6 +63,7 @@ go run ./examples/video -h
 - `MINIMAX_BASE_URL`
 - `MINIMAX_VIDEO_MODEL`
 - `MINIMAX_VIDEO_PROMPT`
+- `MINIMAX_VIDEO_FIRST_FRAME_IMAGE`
 - `MINIMAX_VIDEO_TASK_ID`
 - `MINIMAX_VIDEO_DURATION`
 - `MINIMAX_VIDEO_RESOLUTION`

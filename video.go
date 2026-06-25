@@ -47,6 +47,19 @@ type VideoTextToVideoRequest struct {
 	AIGCWatermark    *bool  `json:"aigc_watermark,omitempty"`
 }
 
+// VideoImageToVideoRequest contains parameters for MiniMax image-to-video task creation.
+type VideoImageToVideoRequest struct {
+	Model            string `json:"model"`
+	FirstFrameImage  string `json:"first_frame_image"`
+	Prompt           string `json:"prompt,omitempty"`
+	PromptOptimizer  *bool  `json:"prompt_optimizer,omitempty"`
+	FastPretreatment *bool  `json:"fast_pretreatment,omitempty"`
+	Duration         *int   `json:"duration,omitempty"`
+	Resolution       string `json:"resolution,omitempty"`
+	CallbackURL      string `json:"callback_url,omitempty"`
+	AIGCWatermark    *bool  `json:"aigc_watermark,omitempty"`
+}
+
 type VideoTaskCreateResponse struct {
 	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
 	TaskID       string                     `json:"task_id"`
@@ -121,18 +134,29 @@ func (s *VideoService) CreateTextToVideo(ctx context.Context, request VideoTextT
 		return nil, errors.New("video service is not initialized")
 	}
 
-	request.Model = strings.TrimSpace(request.Model)
-	request.Prompt = strings.TrimSpace(request.Prompt)
-	request.Resolution = strings.TrimSpace(request.Resolution)
-	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
-
-	if request.Model == "" {
-		return nil, errors.New("video text-to-video request model is empty")
-	}
-	if request.Prompt == "" {
-		return nil, errors.New("video text-to-video request prompt is empty")
+	normalizeVideoTextToVideoRequest(&request)
+	if err := validateVideoTextToVideoRequest(request); err != nil {
+		return nil, err
 	}
 
+	return s.createTask(ctx, request, "video text-to-video")
+}
+
+// CreateImageToVideo creates an async image-to-video generation task.
+func (s *VideoService) CreateImageToVideo(ctx context.Context, request VideoImageToVideoRequest) (*VideoTaskCreateResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("video service is not initialized")
+	}
+
+	normalizeVideoImageToVideoRequest(&request)
+	if err := validateVideoImageToVideoRequest(request); err != nil {
+		return nil, err
+	}
+
+	return s.createTask(ctx, request, "video image-to-video")
+}
+
+func (s *VideoService) createTask(ctx context.Context, request any, prefix string) (*VideoTaskCreateResponse, error) {
 	var raw videoTaskCreateRawResponse
 	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
 		Method: http.MethodPost,
@@ -146,7 +170,7 @@ func (s *VideoService) CreateTextToVideo(ctx context.Context, request VideoTextT
 	response := mapVideoTaskCreateResponse(raw)
 	response.ResponseMeta = responseMetaFromTransport(meta)
 	if response.TaskID == "" {
-		return nil, errors.New("video text-to-video response missing task_id")
+		return nil, errors.New(prefix + " response missing task_id")
 	}
 
 	return response, nil
@@ -197,6 +221,43 @@ func (s *VideoService) resolveQueryPath() string {
 	}
 
 	return defaultVideoQueryPath
+}
+
+func normalizeVideoTextToVideoRequest(request *VideoTextToVideoRequest) {
+	request.Model = strings.TrimSpace(request.Model)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.Resolution = strings.TrimSpace(request.Resolution)
+	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
+}
+
+func normalizeVideoImageToVideoRequest(request *VideoImageToVideoRequest) {
+	request.Model = strings.TrimSpace(request.Model)
+	request.FirstFrameImage = strings.TrimSpace(request.FirstFrameImage)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.Resolution = strings.TrimSpace(request.Resolution)
+	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
+}
+
+func validateVideoTextToVideoRequest(request VideoTextToVideoRequest) error {
+	if request.Model == "" {
+		return errors.New("video text-to-video request model is empty")
+	}
+	if request.Prompt == "" {
+		return errors.New("video text-to-video request prompt is empty")
+	}
+
+	return nil
+}
+
+func validateVideoImageToVideoRequest(request VideoImageToVideoRequest) error {
+	if request.Model == "" {
+		return errors.New("video image-to-video request model is empty")
+	}
+	if request.FirstFrameImage == "" {
+		return errors.New("video image-to-video request first_frame_image is empty")
+	}
+
+	return nil
 }
 
 func mapVideoTaskCreateResponse(raw videoTaskCreateRawResponse) *VideoTaskCreateResponse {

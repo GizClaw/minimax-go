@@ -29,6 +29,7 @@ type options struct {
 	baseURL          string
 	model            string
 	prompt           string
+	firstFrameImage  string
 	taskID           string
 	duration         int
 	resolution       string
@@ -65,6 +66,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		baseURL:          envOrDefault("MINIMAX_BASE_URL", defaultBaseURL),
 		model:            envOrDefault("MINIMAX_VIDEO_MODEL", defaultModel),
 		prompt:           envOrDefault("MINIMAX_VIDEO_PROMPT", defaultPrompt),
+		firstFrameImage:  os.Getenv("MINIMAX_VIDEO_FIRST_FRAME_IMAGE"),
 		taskID:           os.Getenv("MINIMAX_VIDEO_TASK_ID"),
 		duration:         envIntOrDefault("MINIMAX_VIDEO_DURATION", defaultDuration),
 		resolution:       envOrDefault("MINIMAX_VIDEO_RESOLUTION", defaultResolution),
@@ -85,6 +87,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 	fs.StringVar(&opts.baseURL, "base-url", opts.baseURL, "Minimax API base URL (env: MINIMAX_BASE_URL)")
 	fs.StringVar(&opts.model, "model", opts.model, "Video model for submit mode (env: MINIMAX_VIDEO_MODEL)")
 	fs.StringVar(&opts.prompt, "prompt", opts.prompt, "Prompt for submit mode (env: MINIMAX_VIDEO_PROMPT)")
+	fs.StringVar(&opts.firstFrameImage, "first-frame-image", opts.firstFrameImage, "First frame image URL or Data URL for image-to-video submit mode")
 	fs.StringVar(&opts.taskID, "task-id", opts.taskID, "Query existing task_id instead of submitting a new task")
 	fs.IntVar(&opts.duration, "duration", opts.duration, "Video duration in seconds for submit mode")
 	fs.StringVar(&opts.resolution, "resolution", opts.resolution, "Video resolution for submit mode")
@@ -103,6 +106,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		fs.PrintDefaults()
 		fmt.Fprintf(fs.Output(), "\nModes:\n")
 		fmt.Fprintf(fs.Output(), "  - submit mode: no -task-id, creates a text-to-video task\n")
+		fmt.Fprintf(fs.Output(), "  - image-to-video mode: add -first-frame-image to submit with an initial image\n")
 		fmt.Fprintf(fs.Output(), "  - task mode: set -task-id, queries an existing video task\n")
 		fmt.Fprintf(fs.Output(), "\nNotes:\n")
 		fmt.Fprintf(fs.Output(), "  - use -wait to poll until Success/Fail\n")
@@ -128,7 +132,7 @@ func parseOptions(args []string, out io.Writer) (options, error) {
 		if opts.model == "" {
 			return options{}, errors.New("submit mode requires model")
 		}
-		if opts.prompt == "" {
+		if opts.firstFrameImage == "" && opts.prompt == "" {
 			return options{}, errors.New("submit mode requires prompt")
 		}
 	}
@@ -157,18 +161,9 @@ func run(opts options, out io.Writer) error {
 
 	taskID := opts.taskID
 	if taskID == "" {
-		submitted, submitErr := client.Video.CreateTextToVideo(ctx, minimax.VideoTextToVideoRequest{
-			Model:            opts.model,
-			Prompt:           opts.prompt,
-			PromptOptimizer:  boolPtr(opts.promptOptimizer),
-			FastPretreatment: boolPtr(opts.fastPretreatment),
-			Duration:         intPtr(opts.duration),
-			Resolution:       opts.resolution,
-			CallbackURL:      opts.callbackURL,
-			AIGCWatermark:    boolPtr(opts.aigcWatermark),
-		})
+		submitted, submitErr := submitVideoTask(ctx, client, opts)
 		if submitErr != nil {
-			return fmt.Errorf("Video.CreateTextToVideo failed: %w", submitErr)
+			return submitErr
 		}
 
 		taskID = submitted.TaskID
@@ -212,6 +207,41 @@ func run(opts options, out io.Writer) error {
 	return downloadFileContent(ctx, client, response.FileID, opts.output, out)
 }
 
+func submitVideoTask(ctx context.Context, client *minimax.Client, opts options) (*minimax.VideoTaskCreateResponse, error) {
+	if opts.firstFrameImage != "" {
+		submitted, err := client.Video.CreateImageToVideo(ctx, minimax.VideoImageToVideoRequest{
+			Model:            opts.model,
+			FirstFrameImage:  opts.firstFrameImage,
+			Prompt:           opts.prompt,
+			PromptOptimizer:  boolPtr(opts.promptOptimizer),
+			FastPretreatment: boolPtr(opts.fastPretreatment),
+			Duration:         intPtr(opts.duration),
+			Resolution:       opts.resolution,
+			CallbackURL:      opts.callbackURL,
+			AIGCWatermark:    boolPtr(opts.aigcWatermark),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("Video.CreateImageToVideo failed: %w", err)
+		}
+		return submitted, nil
+	}
+
+	submitted, err := client.Video.CreateTextToVideo(ctx, minimax.VideoTextToVideoRequest{
+		Model:            opts.model,
+		Prompt:           opts.prompt,
+		PromptOptimizer:  boolPtr(opts.promptOptimizer),
+		FastPretreatment: boolPtr(opts.fastPretreatment),
+		Duration:         intPtr(opts.duration),
+		Resolution:       opts.resolution,
+		CallbackURL:      opts.callbackURL,
+		AIGCWatermark:    boolPtr(opts.aigcWatermark),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Video.CreateTextToVideo failed: %w", err)
+	}
+	return submitted, nil
+}
+
 func waitOrQuery(ctx context.Context, client *minimax.Client, taskID string, opts options, out io.Writer) (*minimax.VideoTaskStatusResponse, error) {
 	for {
 		response, err := client.Video.GetTask(ctx, taskID)
@@ -239,6 +269,7 @@ func trimOptions(opts *options) {
 	opts.baseURL = strings.TrimSpace(opts.baseURL)
 	opts.model = strings.TrimSpace(opts.model)
 	opts.prompt = strings.TrimSpace(opts.prompt)
+	opts.firstFrameImage = strings.TrimSpace(opts.firstFrameImage)
 	opts.taskID = strings.TrimSpace(opts.taskID)
 	opts.resolution = strings.TrimSpace(opts.resolution)
 	opts.callbackURL = strings.TrimSpace(opts.callbackURL)

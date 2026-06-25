@@ -52,6 +52,24 @@ func TestParseOptions(t *testing.T) {
 			t.Fatalf("taskID = %q, want task_123", opts.taskID)
 		}
 	})
+
+	t.Run("image-to-video mode does not require prompt", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := parseOptions([]string{
+			"-first-frame-image", " https://example.com/frame.png ",
+			"-prompt", " ",
+		}, &bytes.Buffer{})
+		if err != nil {
+			t.Fatalf("parseOptions() error = %v, want nil", err)
+		}
+		if opts.firstFrameImage != "https://example.com/frame.png" {
+			t.Fatalf("firstFrameImage = %q, want trimmed image URL", opts.firstFrameImage)
+		}
+		if opts.prompt != "" {
+			t.Fatalf("prompt = %q, want empty prompt", opts.prompt)
+		}
+	})
 }
 
 func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
@@ -158,6 +176,108 @@ func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
 	}
 	if string(written) != "fake mp4 data" {
 		t.Fatalf("output file = %q, want fake mp4 data", string(written))
+	}
+}
+
+func TestRunSubmitsImageToVideo(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/v1/video_generation":
+			if r.Method != http.MethodPost {
+				t.Fatalf("submit method = %s, want POST", r.Method)
+			}
+
+			var payload struct {
+				Model           string `json:"model"`
+				FirstFrameImage string `json:"first_frame_image"`
+				Prompt          string `json:"prompt,omitempty"`
+				Duration        int    `json:"duration"`
+				Resolution      string `json:"resolution"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "MiniMax-Hailuo-2.3" || payload.FirstFrameImage != "https://example.com/frame.png" || payload.Prompt != "camera pushes in" || payload.Duration != 6 || payload.Resolution != "1080P" {
+				t.Fatalf("payload = %+v, want expected image-to-video submit payload", payload)
+			}
+
+			_, _ = w.Write([]byte(`{"task_id":"task_i2v_123","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	err := run(options{
+		apiKey:          "test-key",
+		baseURL:         srv.URL,
+		model:           "MiniMax-Hailuo-2.3",
+		firstFrameImage: "https://example.com/frame.png",
+		prompt:          "camera pushes in",
+		duration:        6,
+		resolution:      "1080P",
+		promptOptimizer: true,
+		timeout:         30 * time.Second,
+		pollInterval:    time.Millisecond,
+	}, &stdout)
+	if err != nil {
+		t.Fatalf("run() error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "submitted task_id=task_i2v_123") {
+		t.Fatalf("output = %q, want submitted task", output)
+	}
+}
+
+func TestRunSubmitsImageToVideoWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path != "/v1/video_generation" {
+			t.Fatalf("path = %s, want /v1/video_generation", r.URL.Path)
+		}
+
+		var payload map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if _, ok := payload["first_frame_image"]; !ok {
+			t.Fatalf("payload = %+v, want first_frame_image", payload)
+		}
+		if _, ok := payload["prompt"]; ok {
+			t.Fatalf("payload = %+v, want omitted empty prompt", payload)
+		}
+
+		_, _ = w.Write([]byte(`{"task_id":"task_i2v_no_prompt","base_resp":{"status_code":0,"status_msg":"success"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	err := run(options{
+		apiKey:          "test-key",
+		baseURL:         srv.URL,
+		model:           "MiniMax-Hailuo-2.3",
+		firstFrameImage: "https://example.com/frame.png",
+		duration:        6,
+		resolution:      "1080P",
+		timeout:         30 * time.Second,
+		pollInterval:    time.Millisecond,
+	}, &stdout)
+	if err != nil {
+		t.Fatalf("run() error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "submitted task_id=task_i2v_no_prompt") {
+		t.Fatalf("output = %q, want submitted task", output)
 	}
 }
 
