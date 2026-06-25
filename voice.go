@@ -88,12 +88,12 @@ type designVoiceWireRequest struct {
 }
 
 type cloneVoiceWireRequest struct {
-	VoiceID  string      `json:"voice_id"`
-	AudioURL string      `json:"audio_url,omitempty"`
-	FileID   cloneFileID `json:"file_id,omitempty"`
+	VoiceID  string          `json:"voice_id"`
+	AudioURL string          `json:"audio_url,omitempty"`
+	FileID   numericStringID `json:"file_id,omitempty"`
 }
 
-type cloneFileID string
+type numericStringID string
 
 type listVoicesRawResponse struct {
 	Voices          []Voice                    `json:"voices,omitempty"`
@@ -242,7 +242,7 @@ func buildCloneVoicePayload(request *CloneVoiceRequest) (cloneVoiceWireRequest, 
 	payload := cloneVoiceWireRequest{
 		VoiceID:  strings.TrimSpace(request.VoiceID),
 		AudioURL: strings.TrimSpace(request.AudioURL),
-		FileID:   cloneFileID(strings.TrimSpace(request.FileID)),
+		FileID:   numericStringID(strings.TrimSpace(request.FileID)),
 	}
 
 	if payload.VoiceID == "" {
@@ -256,20 +256,20 @@ func buildCloneVoicePayload(request *CloneVoiceRequest) (cloneVoiceWireRequest, 
 	return payload, nil
 }
 
-func (id cloneFileID) MarshalJSON() ([]byte, error) {
+func (id numericStringID) MarshalJSON() ([]byte, error) {
 	trimmed := strings.TrimSpace(string(id))
 	if trimmed == "" {
 		return json.Marshal("")
 	}
 
-	if shouldEncodeCloneFileIDAsNumber(trimmed) {
+	if shouldEncodeNumericStringIDAsNumber(trimmed) {
 		return []byte(trimmed), nil
 	}
 
 	return json.Marshal(trimmed)
 }
 
-func shouldEncodeCloneFileIDAsNumber(value string) bool {
+func shouldEncodeNumericStringIDAsNumber(value string) bool {
 	if !isDigitsOnly(value) {
 		return false
 	}

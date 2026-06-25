@@ -18,7 +18,7 @@ Implemented or partially implemented today:
 - Speech T2A HTTP: `Speech.Synthesize` in `speech.go`
 - Speech T2A HTTP streaming helper: `Speech.OpenStream` in `speech_stream.go`
 - Speech T2A async create/query: `SpeechAsync` in `speech_async.go`
-- File upload: `File.Upload` in `file.go`
+- File management: `File.Upload`, `File.List`, `File.Retrieve`, `File.Download`, and `File.Delete` in `file.go`
 - Voice list/design/clone: `Voice` in `voice.go`
 
 Not implemented today:
@@ -28,7 +28,6 @@ Not implemented today:
 - Image generation
 - Music generation, lyrics generation, music cover preprocess
 - Video generation and video agent task APIs
-- File list/retrieve/download/delete
 - Voice delete
 - Official WebSocket T2A client
 
@@ -81,4 +80,3 @@ Not implemented today:
 - [models-openai-retrieve.md](interfaces/models-openai-retrieve.md)
 - [models-anthropic-list.md](interfaces/models-anthropic-list.md)
 - [models-anthropic-retrieve.md](interfaces/models-anthropic-retrieve.md)
-

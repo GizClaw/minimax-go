@@ -46,9 +46,13 @@ func NewClient(config Config) (*Client, error) {
 		queryEndpoint:  defaultSpeechAsyncQueryPath,
 	}
 	client.File = &FileService{
-		transport:      trans,
-		uploadEndpoint: defaultFileUploadPath,
-		maxUploadBytes: defaultFileMaxUploadBytes,
+		transport:        trans,
+		uploadEndpoint:   defaultFileUploadPath,
+		listEndpoint:     defaultFileListPath,
+		retrieveEndpoint: defaultFileRetrievePath,
+		downloadEndpoint: defaultFileDownloadPath,
+		deleteEndpoint:   defaultFileDeletePath,
+		maxUploadBytes:   defaultFileMaxUploadBytes,
 	}
 	client.Voice = &VoiceService{
 		transport:      trans,

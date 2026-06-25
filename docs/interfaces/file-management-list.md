@@ -2,17 +2,15 @@
 
 - Official docs: https://platform.minimaxi.com/docs/api-reference/file-management-list.md
 - Endpoint: `GET /v1/files/list`
-- SDK status: `Not implemented`
-- Local code: none.
+- SDK status: `Implemented`
+- Local code: `File.List` in `file.go`; tests in `file_test.go`.
 
 ## Purpose
 
 List files stored in the MiniMax file system by category and pagination
 parameters.
 
-## Development notes
+## Current SDK shape
 
-Add this under `FileService` rather than creating a separate service. Model
-pagination explicitly and preserve unknown file metadata in a raw payload for
-forward compatibility.
-
+`FileListRequest` requires `purpose`. `FileListResponse` returns normalized
+`FileInfo` values while preserving unknown file metadata in `Raw`.

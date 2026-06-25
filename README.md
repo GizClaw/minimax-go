@@ -25,6 +25,10 @@ The detailed API inventory lives in [`docs/`](docs/). Current coverage is:
 Implemented:
 
 - [x] File upload: `File.Upload` supports multipart upload and normalized upload metadata.
+- [x] File list: `File.List` lists stored files by MiniMax purpose.
+- [x] File retrieve: `File.Retrieve` retrieves normalized metadata for a generated or uploaded file.
+- [x] File download: `File.Download` opens a raw file content stream for generated files.
+- [x] File delete: `File.Delete` deletes a stored file by file ID and purpose.
 - [x] Voice list: `Voice.ListVoices` queries available system, cloned, and generated voices.
 - [x] Voice design: `Voice.DesignVoice` creates a custom voice from a prompt and preview text.
 
@@ -38,7 +42,6 @@ Partially implemented:
 
 Planned:
 
-- [ ] File list, retrieve, download, and delete APIs.
 - [ ] Voice delete API.
 - [ ] Image generation APIs: text-to-image and image-to-image.
 - [ ] Music APIs: lyrics generation, music cover preprocess, and music generation.

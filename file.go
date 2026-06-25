@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/GizClaw/minimax-go/internal/transport"
@@ -16,6 +19,10 @@ import (
 
 const (
 	defaultFileUploadPath     = "/v1/files/upload"
+	defaultFileListPath       = "/v1/files/list"
+	defaultFileRetrievePath   = "/v1/files/retrieve"
+	defaultFileDownloadPath   = "/v1/files/retrieve_content"
+	defaultFileDeletePath     = "/v1/files/delete"
 	defaultFileFieldName      = "file"
 	defaultFileContentType    = "application/octet-stream"
 	defaultFileMaxUploadBytes = 20 << 20 // 20 MiB
@@ -23,9 +30,13 @@ const (
 )
 
 type FileService struct {
-	transport      *transport.Client
-	uploadEndpoint string
-	maxUploadBytes int
+	transport        *transport.Client
+	uploadEndpoint   string
+	listEndpoint     string
+	retrieveEndpoint string
+	downloadEndpoint string
+	deleteEndpoint   string
+	maxUploadBytes   int
 }
 
 type FileUploadRequest struct {
@@ -35,10 +46,34 @@ type FileUploadRequest struct {
 	Data        []byte `json:"-"`
 }
 
+type FileListRequest struct {
+	Purpose string `json:"purpose"`
+}
+
+type FileDeleteRequest struct {
+	FileID  string `json:"file_id"`
+	Purpose string `json:"purpose"`
+}
+
+type fileDeleteWireRequest struct {
+	FileID  numericStringID `json:"file_id"`
+	Purpose string          `json:"purpose"`
+}
+
 type FileMeta struct {
 	FileName    string `json:"file_name,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+}
+
+type FileInfo struct {
+	FileID      string                     `json:"file_id,omitempty"`
+	Bytes       int64                      `json:"bytes,omitempty"`
+	CreatedAt   int64                      `json:"created_at,omitempty"`
+	FileName    string                     `json:"filename,omitempty"`
+	Purpose     string                     `json:"purpose,omitempty"`
+	DownloadURL string                     `json:"download_url,omitempty"`
+	Raw         map[string]json.RawMessage `json:"-"`
 }
 
 type FileUploadResponse struct {
@@ -49,7 +84,58 @@ type FileUploadResponse struct {
 	Meta         FileMeta     `json:"meta"`
 }
 
+type FileListResponse struct {
+	ResponseMeta ResponseMeta `json:"response_meta,omitzero"`
+	Files        []FileInfo   `json:"files"`
+}
+
+type FileRetrieveResponse struct {
+	ResponseMeta ResponseMeta `json:"response_meta,omitzero"`
+	File         FileInfo     `json:"file"`
+}
+
+type FileDownloadResponse struct {
+	ResponseMeta  ResponseMeta  `json:"response_meta,omitzero"`
+	Body          io.ReadCloser `json:"-"`
+	ContentType   string        `json:"content_type,omitempty"`
+	ContentLength int64         `json:"content_length,omitempty"`
+}
+
+type FileDeleteResponse struct {
+	ResponseMeta ResponseMeta `json:"response_meta,omitzero"`
+	FileID       string       `json:"file_id,omitempty"`
+}
+
 type flexibleString string
+
+type fileListRawResponse struct {
+	Files []fileRawObject `json:"files,omitempty"`
+}
+
+type fileRetrieveRawResponse struct {
+	File fileRawObject `json:"file,omitempty"`
+}
+
+type fileDeleteRawResponse struct {
+	FileID flexibleString `json:"file_id,omitempty"`
+	ID     flexibleString `json:"id,omitempty"`
+}
+
+type fileRawObject struct {
+	FileID      flexibleString             `json:"file_id,omitempty"`
+	ID          flexibleString             `json:"id,omitempty"`
+	Bytes       *int64                     `json:"bytes,omitempty"`
+	Size        *int64                     `json:"size,omitempty"`
+	FileSize    *int64                     `json:"file_size,omitempty"`
+	CreatedAt   *int64                     `json:"created_at,omitempty"`
+	FileName    string                     `json:"filename,omitempty"`
+	Name        string                     `json:"name,omitempty"`
+	Purpose     string                     `json:"purpose,omitempty"`
+	DownloadURL string                     `json:"download_url,omitempty"`
+	FileURL     string                     `json:"file_url,omitempty"`
+	URL         string                     `json:"url,omitempty"`
+	Raw         map[string]json.RawMessage `json:"-"`
+}
 
 type fileUploadRawResponse struct {
 	Uploaded    bool                  `json:"uploaded,omitempty"`
@@ -137,6 +223,136 @@ func (s *FileService) Upload(ctx context.Context, request FileUploadRequest) (*F
 	return response, nil
 }
 
+// List lists uploaded files for a MiniMax file purpose.
+func (s *FileService) List(ctx context.Context, request FileListRequest) (*FileListResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("file service is not initialized")
+	}
+
+	request.Purpose = strings.TrimSpace(request.Purpose)
+	if request.Purpose == "" {
+		return nil, errors.New("file list purpose is empty")
+	}
+
+	query := url.Values{}
+	query.Set(fileUploadPurposeField, request.Purpose)
+
+	var raw fileListRawResponse
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
+		Method: http.MethodGet,
+		Path:   s.resolveListPath(),
+		Query:  query,
+	}, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]FileInfo, 0, len(raw.Files))
+	for _, file := range raw.Files {
+		files = append(files, mapFileInfo(file))
+	}
+
+	return &FileListResponse{
+		ResponseMeta: responseMetaFromTransport(meta),
+		Files:        files,
+	}, nil
+}
+
+// Retrieve retrieves metadata for a MiniMax file.
+func (s *FileService) Retrieve(ctx context.Context, fileID string) (*FileRetrieveResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("file service is not initialized")
+	}
+
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return nil, errors.New("file retrieve file_id is empty")
+	}
+
+	query := url.Values{}
+	query.Set("file_id", fileID)
+
+	var raw fileRetrieveRawResponse
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
+		Method: http.MethodGet,
+		Path:   s.resolveRetrievePath(),
+		Query:  query,
+	}, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FileRetrieveResponse{
+		ResponseMeta: responseMetaFromTransport(meta),
+		File:         mapFileInfo(raw.File),
+	}, nil
+}
+
+// Download opens the raw content stream for a MiniMax file; callers must close Body.
+func (s *FileService) Download(ctx context.Context, fileID string) (*FileDownloadResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("file service is not initialized")
+	}
+
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return nil, errors.New("file download file_id is empty")
+	}
+
+	query := url.Values{}
+	query.Set("file_id", fileID)
+
+	rawResponse, err := s.transport.OpenRawWithMeta(ctx, transport.RawRequest{
+		Method: http.MethodGet,
+		Path:   s.resolveDownloadPath(),
+		Query:  query,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &FileDownloadResponse{
+		ResponseMeta:  responseMetaFromTransport(rawResponse.Meta),
+		Body:          rawResponse.Body,
+		ContentType:   strings.TrimSpace(rawResponse.Meta.Header.Get("Content-Type")),
+		ContentLength: contentLengthFromHeader(rawResponse.Meta.Header),
+	}, nil
+}
+
+// Delete deletes a MiniMax file for a purpose.
+func (s *FileService) Delete(ctx context.Context, request FileDeleteRequest) (*FileDeleteResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("file service is not initialized")
+	}
+
+	request.FileID = strings.TrimSpace(request.FileID)
+	request.Purpose = strings.TrimSpace(request.Purpose)
+	if request.FileID == "" {
+		return nil, errors.New("file delete file_id is empty")
+	}
+	if request.Purpose == "" {
+		return nil, errors.New("file delete purpose is empty")
+	}
+
+	var raw fileDeleteRawResponse
+	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
+		Method: http.MethodPost,
+		Path:   s.resolveDeletePath(),
+		Body: fileDeleteWireRequest{
+			FileID:  numericStringID(request.FileID),
+			Purpose: request.Purpose,
+		},
+	}, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FileDeleteResponse{
+		ResponseMeta: responseMetaFromTransport(meta),
+		FileID:       firstNonEmptyValue(raw.FileID.String(), raw.ID.String(), request.FileID),
+	}, nil
+}
+
 func (s *FileService) resolveUploadPath() string {
 	uploadPath := strings.TrimSpace(s.uploadEndpoint)
 	if uploadPath != "" {
@@ -144,6 +360,42 @@ func (s *FileService) resolveUploadPath() string {
 	}
 
 	return defaultFileUploadPath
+}
+
+func (s *FileService) resolveListPath() string {
+	listPath := strings.TrimSpace(s.listEndpoint)
+	if listPath != "" {
+		return listPath
+	}
+
+	return defaultFileListPath
+}
+
+func (s *FileService) resolveRetrievePath() string {
+	retrievePath := strings.TrimSpace(s.retrieveEndpoint)
+	if retrievePath != "" {
+		return retrievePath
+	}
+
+	return defaultFileRetrievePath
+}
+
+func (s *FileService) resolveDownloadPath() string {
+	downloadPath := strings.TrimSpace(s.downloadEndpoint)
+	if downloadPath != "" {
+		return downloadPath
+	}
+
+	return defaultFileDownloadPath
+}
+
+func (s *FileService) resolveDeletePath() string {
+	deletePath := strings.TrimSpace(s.deleteEndpoint)
+	if deletePath != "" {
+		return deletePath
+	}
+
+	return defaultFileDeletePath
 }
 
 func (s *FileService) resolveMaxUploadBytes() int {
@@ -223,6 +475,43 @@ func mapFileUploadResponse(raw fileUploadRawResponse, request FileUploadRequest,
 	return response
 }
 
+func mapFileInfo(raw fileRawObject) FileInfo {
+	info := FileInfo{
+		FileID:      firstNonEmptyValue(raw.FileID.String(), raw.ID.String()),
+		FileName:    firstNonEmptyValue(raw.FileName, raw.Name),
+		Purpose:     strings.TrimSpace(raw.Purpose),
+		DownloadURL: firstNonEmptyValue(raw.DownloadURL, raw.FileURL, raw.URL),
+		Raw:         cloneRawMessages(raw.Raw),
+	}
+
+	if bytes, ok := firstNonNilInt64(raw.Bytes, raw.Size, raw.FileSize); ok {
+		info.Bytes = bytes
+	}
+	if raw.CreatedAt != nil {
+		info.CreatedAt = *raw.CreatedAt
+	}
+
+	return info
+}
+
+func contentLengthFromHeader(header http.Header) int64 {
+	if header == nil {
+		return 0
+	}
+
+	contentLength := strings.TrimSpace(header.Get("Content-Length"))
+	if contentLength == "" {
+		return 0
+	}
+
+	value, err := strconv.ParseInt(contentLength, 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+
+	return value
+}
+
 func firstNonNilUploadPayload(payloads ...*fileUploadRawPayload) *fileUploadRawPayload {
 	for _, payload := range payloads {
 		if payload != nil {
@@ -230,6 +519,36 @@ func firstNonNilUploadPayload(payloads ...*fileUploadRawPayload) *fileUploadRawP
 		}
 	}
 
+	return nil
+}
+
+func (f *fileRawObject) UnmarshalJSON(data []byte) error {
+	type alias fileRawObject
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	delete(raw, "file_id")
+	delete(raw, "id")
+	delete(raw, "bytes")
+	delete(raw, "size")
+	delete(raw, "file_size")
+	delete(raw, "created_at")
+	delete(raw, "filename")
+	delete(raw, "name")
+	delete(raw, "purpose")
+	delete(raw, "download_url")
+	delete(raw, "file_url")
+	delete(raw, "url")
+
+	*f = fileRawObject(decoded)
+	f.Raw = raw
 	return nil
 }
 
