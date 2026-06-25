@@ -60,6 +60,19 @@ type VideoImageToVideoRequest struct {
 	AIGCWatermark    *bool  `json:"aigc_watermark,omitempty"`
 }
 
+// VideoFirstLastFrameRequest contains parameters for MiniMax first-last-frame video task creation.
+type VideoFirstLastFrameRequest struct {
+	Model           string `json:"model"`
+	LastFrameImage  string `json:"last_frame_image"`
+	FirstFrameImage string `json:"first_frame_image,omitempty"`
+	Prompt          string `json:"prompt,omitempty"`
+	PromptOptimizer *bool  `json:"prompt_optimizer,omitempty"`
+	Duration        *int   `json:"duration,omitempty"`
+	Resolution      string `json:"resolution,omitempty"`
+	CallbackURL     string `json:"callback_url,omitempty"`
+	AIGCWatermark   *bool  `json:"aigc_watermark,omitempty"`
+}
+
 type VideoTaskCreateResponse struct {
 	ResponseMeta ResponseMeta               `json:"response_meta,omitzero"`
 	TaskID       string                     `json:"task_id"`
@@ -156,6 +169,20 @@ func (s *VideoService) CreateImageToVideo(ctx context.Context, request VideoImag
 	return s.createTask(ctx, request, "video image-to-video")
 }
 
+// CreateFirstLastFrameVideo creates an async first-last-frame video generation task.
+func (s *VideoService) CreateFirstLastFrameVideo(ctx context.Context, request VideoFirstLastFrameRequest) (*VideoTaskCreateResponse, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("video service is not initialized")
+	}
+
+	normalizeVideoFirstLastFrameRequest(&request)
+	if err := validateVideoFirstLastFrameRequest(request); err != nil {
+		return nil, err
+	}
+
+	return s.createTask(ctx, request, "video first-last-frame")
+}
+
 func (s *VideoService) createTask(ctx context.Context, request any, prefix string) (*VideoTaskCreateResponse, error) {
 	var raw videoTaskCreateRawResponse
 	meta, err := s.transport.DoJSONWithMeta(ctx, transport.JSONRequest{
@@ -238,6 +265,15 @@ func normalizeVideoImageToVideoRequest(request *VideoImageToVideoRequest) {
 	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
 }
 
+func normalizeVideoFirstLastFrameRequest(request *VideoFirstLastFrameRequest) {
+	request.Model = strings.TrimSpace(request.Model)
+	request.LastFrameImage = strings.TrimSpace(request.LastFrameImage)
+	request.FirstFrameImage = strings.TrimSpace(request.FirstFrameImage)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.Resolution = strings.TrimSpace(request.Resolution)
+	request.CallbackURL = strings.TrimSpace(request.CallbackURL)
+}
+
 func validateVideoTextToVideoRequest(request VideoTextToVideoRequest) error {
 	if request.Model == "" {
 		return errors.New("video text-to-video request model is empty")
@@ -255,6 +291,17 @@ func validateVideoImageToVideoRequest(request VideoImageToVideoRequest) error {
 	}
 	if request.FirstFrameImage == "" {
 		return errors.New("video image-to-video request first_frame_image is empty")
+	}
+
+	return nil
+}
+
+func validateVideoFirstLastFrameRequest(request VideoFirstLastFrameRequest) error {
+	if request.Model == "" {
+		return errors.New("video first-last-frame request model is empty")
+	}
+	if request.LastFrameImage == "" {
+		return errors.New("video first-last-frame request last_frame_image is empty")
 	}
 
 	return nil

@@ -388,6 +388,191 @@ func TestVideoCreateImageToVideo(t *testing.T) {
 	})
 }
 
+func TestVideoCreateFirstLastFrameVideo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success creates first-last-frame task", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Fatalf("method = %s, want POST", r.Method)
+			}
+			if r.URL.Path != defaultVideoGenerationPath {
+				t.Fatalf("path = %s, want %s", r.URL.Path, defaultVideoGenerationPath)
+			}
+
+			var payload VideoFirstLastFrameRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if payload.Model != "MiniMax-Hailuo-02" {
+				t.Fatalf("payload.Model = %q, want MiniMax-Hailuo-02", payload.Model)
+			}
+			if payload.LastFrameImage != "https://example.com/end.png" {
+				t.Fatalf("payload.LastFrameImage = %q, want trimmed last frame URL", payload.LastFrameImage)
+			}
+			if payload.FirstFrameImage != "https://example.com/start.png" {
+				t.Fatalf("payload.FirstFrameImage = %q, want trimmed first frame URL", payload.FirstFrameImage)
+			}
+			if payload.Prompt != "A child grows up in a sunny garden" {
+				t.Fatalf("payload.Prompt = %q, want trimmed prompt", payload.Prompt)
+			}
+			if payload.PromptOptimizer == nil || *payload.PromptOptimizer {
+				t.Fatalf("payload.PromptOptimizer = %v, want explicit false", payload.PromptOptimizer)
+			}
+			if payload.Duration == nil || *payload.Duration != 6 {
+				t.Fatalf("payload.Duration = %v, want 6", payload.Duration)
+			}
+			if payload.Resolution != "1080P" || payload.CallbackURL != "https://callback.example.com/video" {
+				t.Fatalf("payload resolution/callback = %q/%q", payload.Resolution, payload.CallbackURL)
+			}
+			if payload.AIGCWatermark == nil || !*payload.AIGCWatermark {
+				t.Fatalf("payload.AIGCWatermark = %v, want explicit true", payload.AIGCWatermark)
+			}
+
+			w.Header().Set("X-Trace-ID", "trace-video-fl2v")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"task_id":"106916112212034","extra":"kept","base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateFirstLastFrameVideo(context.Background(), VideoFirstLastFrameRequest{
+			Model:           " MiniMax-Hailuo-02 ",
+			LastFrameImage:  " https://example.com/end.png ",
+			FirstFrameImage: " https://example.com/start.png ",
+			Prompt:          " A child grows up in a sunny garden ",
+			PromptOptimizer: videoBoolPtr(false),
+			Duration:        videoIntPtr(6),
+			Resolution:      " 1080P ",
+			CallbackURL:     " https://callback.example.com/video ",
+			AIGCWatermark:   videoBoolPtr(true),
+		})
+		if err != nil {
+			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212034" {
+			t.Fatalf("response.TaskID = %q, want 106916112212034", response.TaskID)
+		}
+		if response.ResponseMeta.TraceID != "trace-video-fl2v" {
+			t.Fatalf("TraceID = %q, want trace-video-fl2v", response.ResponseMeta.TraceID)
+		}
+		if _, ok := response.Raw["extra"]; !ok {
+			t.Fatalf("response.Raw missing extra field: %+v", response.Raw)
+		}
+	})
+
+	t.Run("last frame without first frame is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if _, ok := payload["last_frame_image"]; !ok {
+				t.Fatalf("payload = %+v, want last_frame_image", payload)
+			}
+			if _, ok := payload["first_frame_image"]; ok {
+				t.Fatalf("payload = %+v, want omitted empty first_frame_image", payload)
+			}
+			if _, ok := payload["prompt"]; ok {
+				t.Fatalf("payload = %+v, want omitted empty prompt", payload)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"task_id":106916112212034},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		response, err := client.Video.CreateFirstLastFrameVideo(context.Background(), VideoFirstLastFrameRequest{
+			Model:          "MiniMax-Hailuo-02",
+			LastFrameImage: "https://example.com/end.png",
+		})
+		if err != nil {
+			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want nil", err)
+		}
+		if response.TaskID != "106916112212034" {
+			t.Fatalf("response.TaskID = %q, want 106916112212034", response.TaskID)
+		}
+	})
+
+	t.Run("empty model fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateFirstLastFrameVideo(context.Background(), VideoFirstLastFrameRequest{
+			LastFrameImage: "https://example.com/end.png",
+		})
+		if err == nil {
+			t.Fatal("CreateFirstLastFrameVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "model is empty") {
+			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want model validation error", err)
+		}
+	})
+
+	t.Run("empty last frame image fails fast", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+		_, err = client.Video.CreateFirstLastFrameVideo(context.Background(), VideoFirstLastFrameRequest{
+			Model:          "MiniMax-Hailuo-02",
+			LastFrameImage: " ",
+		})
+		if err == nil {
+			t.Fatal("CreateFirstLastFrameVideo() error = nil, want non-nil")
+		}
+		if !strings.Contains(err.Error(), "last_frame_image is empty") {
+			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want last_frame_image validation error", err)
+		}
+	})
+
+	t.Run("base_resp non-zero returns unified api error", func(t *testing.T) {
+		t.Parallel()
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid last frame"}}`))
+		}))
+		defer srv.Close()
+
+		client := newVideoTestClient(t, srv)
+		_, err := client.Video.CreateFirstLastFrameVideo(context.Background(), VideoFirstLastFrameRequest{
+			Model:          "MiniMax-Hailuo-02",
+			LastFrameImage: "https://example.com/end.png",
+		})
+		assertAPIStatus(t, err, 2013, "invalid last frame")
+	})
+
+	t.Run("context canceled is preserved", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewClient(Config{BaseURL: "https://api.minimax.io"})
+		if err != nil {
+			t.Fatalf("NewClient() error = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = client.Video.CreateFirstLastFrameVideo(ctx, VideoFirstLastFrameRequest{
+			Model:          "MiniMax-Hailuo-02",
+			LastFrameImage: "https://example.com/end.png",
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CreateFirstLastFrameVideo() error = %v, want context canceled", err)
+		}
+	})
+}
+
 func TestVideoGetTask(t *testing.T) {
 	t.Parallel()
 
