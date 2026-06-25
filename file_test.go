@@ -591,6 +591,69 @@ func TestFileDownload(t *testing.T) {
 		}
 	})
 
+	t.Run("falls back to retrieved download url for generated video files", func(t *testing.T) {
+		t.Parallel()
+
+		var srv *httptest.Server
+		srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case defaultFileDownloadPath:
+				if r.Method != http.MethodGet {
+					t.Fatalf("download method = %s, want GET", r.Method)
+				}
+				if got := r.URL.Query().Get("file_id"); got != "video_file_123" {
+					t.Fatalf("download file_id query = %q, want video_file_123", got)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid params, invalid file purpose"}}`))
+			case defaultFileRetrievePath:
+				if r.Method != http.MethodGet {
+					t.Fatalf("retrieve method = %s, want GET", r.Method)
+				}
+				if got := r.URL.Query().Get("file_id"); got != "video_file_123" {
+					t.Fatalf("retrieve file_id query = %q, want video_file_123", got)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"file":{"file_id":"video_file_123","download_url":"` + srv.URL + `/signed/video.mp4"},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+			case "/signed/video.mp4":
+				if r.Header.Get("Authorization") != "" {
+					t.Fatalf("Authorization header on signed URL = %q, want empty", r.Header.Get("Authorization"))
+				}
+
+				w.Header().Set("Content-Type", "video/mp4")
+				w.Header().Set("Content-Length", "15")
+				_, _ = w.Write([]byte("signed mp4 body"))
+			default:
+				t.Fatalf("unexpected path %s", r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		client := newFileTestClient(t, srv)
+		response, err := client.File.Download(context.Background(), "video_file_123")
+		if err != nil {
+			t.Fatalf("Download() error = %v, want nil", err)
+		}
+		defer response.Body.Close()
+
+		if response.ContentType != "video/mp4" {
+			t.Fatalf("ContentType = %q, want video/mp4", response.ContentType)
+		}
+		if response.ContentLength != 15 {
+			t.Fatalf("ContentLength = %d, want 15", response.ContentLength)
+		}
+
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(Body) error = %v", err)
+		}
+		if string(body) != "signed mp4 body" {
+			t.Fatalf("body = %q, want signed mp4 body", string(body))
+		}
+	})
+
 	t.Run("empty file_id fails fast", func(t *testing.T) {
 		t.Parallel()
 

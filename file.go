@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/GizClaw/minimax-go/internal/protocol"
 	"github.com/GizClaw/minimax-go/internal/transport"
 )
 
@@ -308,15 +309,13 @@ func (s *FileService) Download(ctx context.Context, fileID string) (*FileDownloa
 		Query:  query,
 	})
 	if err != nil {
+		if shouldFallbackToRetrievedDownloadURL(err) {
+			return s.downloadFromRetrievedURL(ctx, fileID)
+		}
 		return nil, err
 	}
 
-	return &FileDownloadResponse{
-		ResponseMeta:  responseMetaFromTransport(rawResponse.Meta),
-		Body:          rawResponse.Body,
-		ContentType:   strings.TrimSpace(rawResponse.Meta.Header.Get("Content-Type")),
-		ContentLength: contentLengthFromHeader(rawResponse.Meta.Header),
-	}, nil
+	return fileDownloadResponseFromRaw(rawResponse), nil
 }
 
 // Delete deletes a MiniMax file for a purpose.
@@ -404,6 +403,47 @@ func (s *FileService) resolveMaxUploadBytes() int {
 	}
 
 	return defaultFileMaxUploadBytes
+}
+
+func (s *FileService) downloadFromRetrievedURL(ctx context.Context, fileID string) (*FileDownloadResponse, error) {
+	retrieved, err := s.Retrieve(ctx, fileID)
+	if err != nil {
+		return nil, fmt.Errorf("file download retrieve fallback failed: %w", err)
+	}
+
+	downloadURL := strings.TrimSpace(retrieved.File.DownloadURL)
+	if downloadURL == "" {
+		return nil, errors.New("file download retrieve fallback missing download_url")
+	}
+
+	rawResponse, err := s.transport.OpenRawURLWithMeta(ctx, downloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("file download_url failed: %w", err)
+	}
+
+	return fileDownloadResponseFromRaw(rawResponse), nil
+}
+
+func fileDownloadResponseFromRaw(rawResponse *transport.RawResponse) *FileDownloadResponse {
+	if rawResponse == nil {
+		return &FileDownloadResponse{}
+	}
+
+	return &FileDownloadResponse{
+		ResponseMeta:  responseMetaFromTransport(rawResponse.Meta),
+		Body:          rawResponse.Body,
+		ContentType:   strings.TrimSpace(rawResponse.Meta.Header.Get("Content-Type")),
+		ContentLength: contentLengthFromHeader(rawResponse.Meta.Header),
+	}
+}
+
+func shouldFallbackToRetrievedDownloadURL(err error) bool {
+	var apiErr *protocol.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+
+	return apiErr.StatusCode == 2013 && strings.Contains(strings.ToLower(apiErr.StatusMsg), "file purpose")
 }
 
 func resolveFileContentType(fileName, contentType string) (string, error) {

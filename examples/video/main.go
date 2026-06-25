@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -210,14 +209,6 @@ func run(opts options, out io.Writer) error {
 		return nil
 	}
 
-	if file.File.DownloadURL != "" {
-		if err := downloadFromURL(ctx, file.File.DownloadURL, opts.output); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "saved=%s\n", opts.output)
-		return nil
-	}
-
 	return downloadFileContent(ctx, client, response.FileID, opts.output, out)
 }
 
@@ -252,25 +243,6 @@ func trimOptions(opts *options) {
 	opts.resolution = strings.TrimSpace(opts.resolution)
 	opts.callbackURL = strings.TrimSpace(opts.callbackURL)
 	opts.output = strings.TrimSpace(opts.output)
-}
-
-func downloadFromURL(ctx context.Context, downloadURL string, output string) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create download request: %w", err)
-	}
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return fmt.Errorf("download_url request failed: %w", err)
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("download_url request failed: http status %d", response.StatusCode)
-	}
-
-	return writeBodyToFile(response.Body, output)
 }
 
 func downloadFileContent(ctx context.Context, client *minimax.Client, fileID string, output string, out io.Writer) error {

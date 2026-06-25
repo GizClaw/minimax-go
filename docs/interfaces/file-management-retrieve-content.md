@@ -13,4 +13,5 @@ Download file bytes from MiniMax storage.
 
 `File.Download` requires a non-empty `file_id` and returns an `io.ReadCloser`
 body with response metadata, content type, and content length. Callers must close
-the body.
+the body. For generated assets where `retrieve_content` rejects the file purpose,
+the SDK falls back to `File.Retrieve` and streams the returned `download_url`.

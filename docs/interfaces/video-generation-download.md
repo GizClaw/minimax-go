@@ -13,4 +13,6 @@ Retrieve video file download information by `file_id`.
 
 Use `File.Retrieve(ctx, fileID)` for metadata and download URL details, or
 `File.Download(ctx, fileID)` for raw content streams. The SDK does not duplicate
-these file endpoints under `VideoService`.
+these file endpoints under `VideoService`. `File.Download` handles generated
+video files by falling back to the retrieved signed `download_url` when
+`retrieve_content` rejects the file purpose.

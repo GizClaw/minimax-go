@@ -99,6 +99,15 @@ func TestRunSubmitsWaitsRetrievesAndDownloadsVideo(t *testing.T) {
 			}
 
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"file":{"file_id":"file_video_123","download_url":%q},"base_resp":{"status_code":0,"status_msg":"success"}}`, srv.URL+"/video.mp4")))
+		case "/v1/files/retrieve_content":
+			if r.Method != http.MethodGet {
+				t.Fatalf("retrieve_content method = %s, want GET", r.Method)
+			}
+			if got := r.URL.Query().Get("file_id"); got != "file_video_123" {
+				t.Fatalf("retrieve_content file_id query = %q, want file_video_123", got)
+			}
+
+			_, _ = w.Write([]byte(`{"base_resp":{"status_code":2013,"status_msg":"invalid params, invalid file purpose"}}`))
 		case "/video.mp4":
 			if r.Method != http.MethodGet {
 				t.Fatalf("download method = %s, want GET", r.Method)
