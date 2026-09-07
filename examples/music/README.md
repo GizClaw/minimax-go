@@ -97,3 +97,21 @@ go run ./examples/music generate \
 - `MINIMAX_MUSIC_COVER_FEATURE_ID`
 - `MINIMAX_MUSIC_OUTPUT`
 - `MINIMAX_MUSIC_TIMEOUT`
+
+## Music 3.0
+
+Use the explicit model with the China endpoint shown in the
+[official MiniMax console](https://solutions.minimaxi.com/debug/music):
+
+```bash
+MINIMAX_BASE_URL=https://api.minimaxi.com go run ./examples/music generate \
+  -model music-3.0 \
+  -prompt "gentle piano lullaby" \
+  -lyrics $'[Verse]\nLittle cloud, drift softly by\n[Chorus]\nStars are shining in the sky' \
+  -output-format url
+```
+
+The SDK forwards `music-3.0` unchanged and applies the existing song validation:
+lyrics are required unless instrumental generation or lyrics optimization is
+requested with a prompt. Cover inputs and streaming remain unsupported for this
+model. Existing model names and the example CLI default are unchanged.

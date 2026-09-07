@@ -20,6 +20,7 @@ const (
 type MusicModel string
 
 const (
+	MusicModelV30       MusicModel = "music-3.0"
 	MusicModelV26       MusicModel = "music-2.6"
 	MusicModelCover     MusicModel = "music-cover"
 	MusicModelV26Free   MusicModel = "music-2.6-free"
@@ -323,10 +324,10 @@ func validateMusicSongGenerateRequest(request MusicGenerateRequest) error {
 
 func validateMusicCoverGenerateRequest(request MusicGenerateRequest) error {
 	if request.LyricsOptimizer != nil && *request.LyricsOptimizer {
-		return errors.New("music cover request lyrics_optimizer is only supported by music-2.6 models")
+		return errors.New("music cover request lyrics_optimizer is only supported by song generation models")
 	}
 	if request.IsInstrumental != nil && *request.IsInstrumental {
-		return errors.New("music cover request is_instrumental is only supported by music-2.6 models")
+		return errors.New("music cover request is_instrumental is only supported by song generation models")
 	}
 
 	sources := 0
@@ -384,7 +385,7 @@ func validateLyricsGenerateRequest(request LyricsGenerateRequest) error {
 
 func isSupportedMusicModel(model string) bool {
 	switch model {
-	case string(MusicModelV26), string(MusicModelCover), string(MusicModelV26Free), string(MusicModelCoverFree):
+	case string(MusicModelV30), string(MusicModelV26), string(MusicModelCover), string(MusicModelV26Free), string(MusicModelCoverFree):
 		return true
 	default:
 		return false

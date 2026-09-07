@@ -620,3 +620,65 @@ func newMusicTestClient(t *testing.T, srv *httptest.Server) *Client {
 	}
 	return client
 }
+
+func TestMusicGenerateV30(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		request   MusicGenerateRequest
+		wantError string
+	}{
+		{name: "song", request: MusicGenerateRequest{Lyrics: "[Verse]\nGoodnight little cloud"}},
+		{name: "instrumental", request: MusicGenerateRequest{Prompt: "gentle piano", IsInstrumental: new(true)}},
+		{name: "optimized lyrics", request: MusicGenerateRequest{Prompt: "gentle piano", LyricsOptimizer: new(true)}},
+		{name: "missing lyrics", wantError: "lyrics is empty"},
+		{name: "missing instrumental prompt", request: MusicGenerateRequest{IsInstrumental: new(true)}, wantError: "prompt is empty"},
+		{name: "missing optimizer prompt", request: MusicGenerateRequest{LyricsOptimizer: new(true)}, wantError: "prompt is empty"},
+		{name: "cover input", request: MusicGenerateRequest{Lyrics: "hello", AudioURL: "https://example.com/song.mp3"}, wantError: "require a music-cover model"},
+		{name: "streaming", request: MusicGenerateRequest{Lyrics: "hello", Stream: new(true)}, wantError: "stream=true is not supported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.wantError != "" {
+					t.Error("invalid request reached server")
+				}
+				if r.Method != http.MethodPost || r.URL.Path != defaultMusicGenerationPath {
+					t.Errorf("unexpected endpoint: %s %s", r.Method, r.URL.Path)
+				}
+				var got MusicGenerateRequest
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Error(err)
+					return
+				}
+				if got.Model != "music-3.0" || got.Lyrics != tc.request.Lyrics || got.Prompt != tc.request.Prompt {
+					t.Errorf("model or song copy changed: %+v", got)
+				}
+				if (got.IsInstrumental != nil && *got.IsInstrumental) != (tc.request.IsInstrumental != nil && *tc.request.IsInstrumental) {
+					t.Error("instrumental flag changed")
+				}
+				if (got.LyricsOptimizer != nil && *got.LyricsOptimizer) != (tc.request.LyricsOptimizer != nil && *tc.request.LyricsOptimizer) {
+					t.Error("lyrics optimizer flag changed")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"audio":"6869","status":2},"trace_id":"music-3-trace","base_resp":{"status_code":0,"status_msg":"success"}}`))
+			}))
+			defer srv.Close()
+			request := tc.request
+			request.Model = " " + string(MusicModelV30) + " "
+			response, err := newMusicTestClient(t, srv).Music.Generate(context.Background(), request)
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("error = %v, want %q", err, tc.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.Audio != "6869" || response.Status == nil || *response.Status != 2 || response.TraceID != "music-3-trace" {
+				t.Fatalf("unexpected response: %+v", response)
+			}
+		})
+	}
+}
