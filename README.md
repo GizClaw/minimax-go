@@ -54,7 +54,7 @@ Implemented:
 - [x] Image T2I: `Image.GenerateTextToImage` generates images from text prompts.
 - [x] Image I2I: `Image.GenerateImageToImage` generates images from prompts and subject references.
 - [x] Music lyrics generation: `Music.GenerateLyrics` writes or edits lyrics for music workflows.
-- [x] Music generation: `Music.Generate` creates non-streaming songs, instrumental tracks, and cover music.
+- [x] Music generation: `Music.Generate` creates non-streaming songs (including `MusicModelV30` / `music-3.0`), instrumental tracks, and cover music.
 - [x] Music cover preprocess: `Music.PreprocessCover` extracts cover features and formatted lyrics for two-step cover workflows.
 - [x] Video T2V create: `Video.CreateTextToVideo` creates async text-to-video tasks.
 - [x] Video I2V create: `Video.CreateImageToVideo` creates async image-to-video tasks.
