@@ -128,3 +128,17 @@ func TestIsRetryable(t *testing.T) {
 		t.Fatal("IsRetryable(context.DeadlineExceeded) = true, want false")
 	}
 }
+
+func TestStructuredErrorDetail(t *testing.T) {
+	body := []byte(`{"type":"error","error":{"type":"rate_limit_error","message":"retry later (1002)","http_code":"429"},"request_id":"body-request"}`)
+	for _, status := range []int{200, 429} {
+		err := CheckResponseWithTrace(status, body, TraceMeta{RequestID: "header-request", TraceID: "trace"})
+		apiErr, ok := errors.AsType[*APIError](err)
+		if !ok || apiErr.Detail == nil || apiErr.Detail.Type != "rate_limit_error" || apiErr.StatusMsg != "retry later (1002)" || apiErr.RequestID != "header-request" || apiErr.TraceID != "trace" {
+			t.Fatalf("structured error: %#v", apiErr)
+		}
+		if IsRetryable(err) != (status == 429) {
+			t.Fatal("retry must follow HTTP status")
+		}
+	}
+}

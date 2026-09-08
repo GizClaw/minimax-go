@@ -84,10 +84,17 @@ type UploadRequest struct {
 	Query           url.Values
 	Headers         http.Header
 	Fields          map[string]string
+	FormFields      []FormField
 	FileField       string
 	FileName        string
 	FileContentType string
 	FileData        []byte
+}
+
+// FormField is a named multipart text field.
+type FormField struct {
+	Name  string
+	Value string
 }
 
 type WebSocketRequest struct {
@@ -585,6 +592,12 @@ func firstNonEmpty(values ...string) string {
 func buildUploadPayload(request UploadRequest) ([]byte, string, error) {
 	var payload bytes.Buffer
 	writer := multipart.NewWriter(&payload)
+
+	for _, field := range request.FormFields {
+		if err := writer.WriteField(field.Name, field.Value); err != nil {
+			return nil, "", fmt.Errorf("write field %s: %w", field.Name, err)
+		}
+	}
 
 	for key, value := range request.Fields {
 		if err := writer.WriteField(key, value); err != nil {

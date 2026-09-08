@@ -9,6 +9,7 @@ Go SDK and examples for MiniMax APIs.
 ## What is included
 
 - Speech APIs
+  - speech-to-text: JSON, speaker/timestamp details, SRT/VTT subtitles and SSE
   - synchronous HTTP TTS
   - streaming TTS
   - official WebSocket TTS
@@ -38,6 +39,8 @@ Go SDK and examples for MiniMax APIs.
 The detailed API inventory lives in [`docs/`](docs/). Current coverage is:
 
 Implemented:
+
+- [x] Speech-to-text: `SpeechToText.Transcribe` and `SpeechToText.OpenStream` cover all documented formats, language hints and typed results. See [usage and contract](docs/interfaces/speech-to-text.md).
 
 - [x] File upload: `File.Upload` supports multipart upload and normalized upload metadata.
 - [x] File list: `File.List` lists stored files by MiniMax purpose.
@@ -89,6 +92,7 @@ export MINIMAX_API_KEY="your_api_key"
 Check runnable examples:
 
 ```bash
+go run ./examples/transcription -h
 go run ./examples/speech -h
 go run ./examples/speech async -h
 go run ./examples/speech stream -h
