@@ -257,7 +257,7 @@ func TestSpeechToTextStream(t *testing.T) {
 	}
 	defer stream.Close()
 	var text strings.Builder
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		chunk, err := stream.Next()
 		if err != nil {
 			t.Fatal(err)
@@ -307,7 +307,7 @@ func TestSpeechToTextStreamFailures(t *testing.T) {
 			stream, err := client.SpeechToText.OpenStream(context.Background(), transcriptionRequest())
 			if err == nil {
 				defer stream.Close()
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					_, err = stream.Next()
 					if err != nil {
 						break
@@ -471,9 +471,7 @@ func TestSpeechToTextStreamAutomaticallyCloses(t *testing.T) {
 				<-r.Context().Done()
 				close(closed)
 			})
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			s, err := client.SpeechToText.OpenStream(ctx, transcriptionRequest())
+			s, err := client.SpeechToText.OpenStream(t.Context(), transcriptionRequest())
 			if err != nil {
 				t.Fatal(err)
 			}
