@@ -15,14 +15,15 @@ type Config struct {
 }
 
 type Client struct {
-	transport   *transport.Client
-	Speech      *SpeechService
-	SpeechAsync *SpeechAsyncService
-	File        *FileService
-	Image       *ImageService
-	Music       *MusicService
-	Voice       *VoiceService
-	Video       *VideoService
+	transport    *transport.Client
+	SpeechToText *SpeechToTextService
+	Speech       *SpeechService
+	SpeechAsync  *SpeechAsyncService
+	File         *FileService
+	Image        *ImageService
+	Music        *MusicService
+	Voice        *VoiceService
+	Video        *VideoService
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -38,6 +39,7 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	client := &Client{transport: trans}
+	client.SpeechToText = &SpeechToTextService{transport: trans}
 	client.Speech = &SpeechService{
 		transport:      trans,
 		endpoint:       defaultSpeechSynthesizePath,

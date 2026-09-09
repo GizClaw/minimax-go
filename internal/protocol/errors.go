@@ -21,12 +21,29 @@ type BaseResp struct {
 // APIError is the unified error model for HTTP and base_resp semantics.
 type APIError struct {
 	HTTPStatus int
+	// Detail contains the documented OpenAI-style error fields, when present.
+	Detail     *ErrorDetail
 	StatusCode int
 	StatusMsg  string
 	RequestID  string
 	TraceID    string
 	Body       string
 	Cause      error
+}
+
+// ErrorDetail describes an OpenAI-style API error.
+type ErrorDetail struct {
+	// Type is the provider error category, such as rate_limit_error.
+	Type string `json:"type"`
+	// Message is the provider's diagnostic message.
+	Message string `json:"message"`
+	// HTTPCode is the status string supplied in the response body.
+	HTTPCode string `json:"http_code"`
+}
+
+type errorEnvelope struct {
+	Type  string       `json:"type"`
+	Error *ErrorDetail `json:"error"`
 }
 
 func (e *APIError) Error() string {
@@ -137,6 +154,15 @@ func CheckResponse(httpStatus int, body []byte) error {
 // CheckResponseWithTrace normalizes HTTP and business status with request trace metadata.
 func CheckResponseWithTrace(httpStatus int, body []byte, traceMeta TraceMeta) error {
 	traceMeta = mergeTraceMeta(traceMeta, ExtractTraceMeta(body))
+
+	var envelope errorEnvelope
+	if json.Unmarshal(body, &envelope) == nil && envelope.Error != nil {
+		err := NewHTTPError(httpStatus, body)
+		err.Detail = envelope.Error
+		err.StatusMsg = envelope.Error.Message
+		applyTraceMeta(err, traceMeta)
+		return err
+	}
 
 	if httpStatus < http.StatusOK || httpStatus >= http.StatusMultipleChoices {
 		err := NewHTTPError(httpStatus, body)

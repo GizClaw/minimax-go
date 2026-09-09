@@ -15,6 +15,7 @@ official interface page or endpoint and records:
 
 Implemented or partially implemented today:
 
+- Speech-to-text: `SpeechToText.Transcribe` (JSON, verbose JSON, SRT, VTT) and `SpeechToText.OpenStream` (SSE); checked 2026-09-09
 - Speech T2A HTTP: `Speech.Synthesize` in `speech.go`
 - Speech T2A HTTP streaming helper: `Speech.OpenStream` in `speech_stream.go`
 - Speech T2A WebSocket: `Speech.OpenWebSocket` in `speech_websocket.go`
@@ -43,6 +44,8 @@ Not implemented today:
 - [file-management-delete.md](interfaces/file-management-delete.md)
 
 ### Speech and voice
+
+- [speech-to-text.md](interfaces/speech-to-text.md)
 
 - [speech-t2a-http.md](interfaces/speech-t2a-http.md)
 - [speech-t2a-websocket.md](interfaces/speech-t2a-websocket.md)
