@@ -47,13 +47,18 @@ type SpeechWebSocket struct {
 }
 
 type SpeechWebSocketEvent struct {
-	Event       string          `json:"event,omitempty"`
-	SessionID   string          `json:"session_id,omitempty"`
-	TraceID     string          `json:"trace_id,omitempty"`
-	Audio       []byte          `json:"audio,omitempty"`
-	RawHexAudio string          `json:"raw_hex_audio,omitempty"`
-	Done        bool            `json:"done,omitempty"`
-	Raw         json.RawMessage `json:"-"`
+	Event       string `json:"event,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	TraceID     string `json:"trace_id,omitempty"`
+	Audio       []byte `json:"audio,omitempty"`
+	RawHexAudio string `json:"raw_hex_audio,omitempty"`
+	// IsFinal marks the last synthesis frame of the task. It can carry no
+	// audio; it reports the task's extra_info.
+	IsFinal bool `json:"is_final,omitempty"`
+	// UsageCharacters is the billed character count the final frame reports.
+	UsageCharacters *int64          `json:"usage_characters,omitempty"`
+	Done            bool            `json:"done,omitempty"`
+	Raw             json.RawMessage `json:"-"`
 }
 
 type speechWebSocketStartMessage struct {
@@ -84,7 +89,8 @@ type speechWebSocketRawMessage struct {
 	Event      string                     `json:"event,omitempty"`
 	TraceID    string                     `json:"trace_id,omitempty"`
 	Data       speechWebSocketRawData     `json:"data"`
-	ExtraInfo  *speechTaskMetaRaw         `json:"extra_info,omitempty"`
+	IsFinal    bool                       `json:"is_final,omitempty"`
+	ExtraInfo  *speechWebSocketExtraInfo  `json:"extra_info,omitempty"`
 	BaseResp   *protocol.BaseResp         `json:"base_resp,omitempty"`
 	StatusCode int                        `json:"status_code,omitempty"`
 	StatusMsg  string                     `json:"status_msg,omitempty"`
@@ -92,6 +98,10 @@ type speechWebSocketRawMessage struct {
 	ErrorMsg   string                     `json:"error_msg,omitempty"`
 	Message    string                     `json:"message,omitempty"`
 	Raw        map[string]json.RawMessage `json:"-"`
+}
+
+type speechWebSocketExtraInfo struct {
+	UsageCharacters *int64 `json:"usage_characters,omitempty"`
 }
 
 type speechWebSocketRawData struct {
@@ -328,23 +338,31 @@ func decodeSpeechWebSocketEvent(raw []byte) (*SpeechWebSocketEvent, error) {
 	}
 
 	hexAudio := message.hexAudio()
-	if hexAudio == "" {
+	if hexAudio == "" && !message.IsFinal {
 		return nil, nil
 	}
 
-	audio, err := codec.DecodeHexAudio(hexAudio)
-	if err != nil {
-		return nil, fmt.Errorf("decode speech websocket audio chunk: %w", err)
+	var audio []byte
+	if hexAudio != "" {
+		audio, err = codec.DecodeHexAudio(hexAudio)
+		if err != nil {
+			return nil, fmt.Errorf("decode speech websocket audio chunk: %w", err)
+		}
 	}
 
-	return &SpeechWebSocketEvent{
+	event := &SpeechWebSocketEvent{
 		Event:       eventName,
 		SessionID:   strings.TrimSpace(message.SessionID),
 		TraceID:     strings.TrimSpace(message.TraceID),
 		Audio:       audio,
 		RawHexAudio: hexAudio,
+		IsFinal:     message.IsFinal,
 		Raw:         cloneRawBytes(raw),
-	}, nil
+	}
+	if message.ExtraInfo != nil {
+		event.UsageCharacters = cloneInt64Pointer(message.ExtraInfo.UsageCharacters)
+	}
+	return event, nil
 }
 
 func parseSpeechWebSocketRawMessage(raw []byte) (speechWebSocketRawMessage, error) {

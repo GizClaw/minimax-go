@@ -16,3 +16,8 @@ The SDK keeps this as a separate path from `Speech.OpenStream`. It dials the
 official WebSocket endpoint, waits for `connected_success`, sends `task_start`,
 waits for `task_started`, sends `task_continue` and `task_finish`, then reads
 audio and terminal events with contextual errors for server failure frames.
+
+`Next` also returns the final `task_continued` frame (`is_final: true`) even
+when it carries no audio. That event has `IsFinal` set and
+`UsageCharacters` from `extra_info.usage_characters`, the billed character
+count of the task.

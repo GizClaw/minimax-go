@@ -211,7 +211,7 @@ func runWebSocket(opts webSocketOptions, out io.Writer) (retErr error) {
 	}
 	defer closeWithRetError(outputFile, "output file", &retErr)
 
-	totalBytes, chunkCount, err := writeSpeechWebSocketToFile(ctx, ws, outputFile)
+	totalBytes, chunkCount, usageCharacters, err := writeSpeechWebSocketToFile(ctx, ws, outputFile)
 	if err != nil {
 		return err
 	}
@@ -223,30 +223,40 @@ func runWebSocket(opts webSocketOptions, out io.Writer) (retErr error) {
 	}
 
 	fmt.Fprintf(out, "websocket synthesis succeeded, wrote %d bytes from %d chunks to %s\n", totalBytes, chunkCount, opts.output)
+	if usageCharacters != nil {
+		fmt.Fprintf(out, "billed usage characters: %d\n", *usageCharacters)
+	} else {
+		fmt.Fprintln(out, "billed usage characters: not reported")
+	}
 	return nil
 }
 
-func writeSpeechWebSocketToFile(ctx context.Context, ws *minimax.SpeechWebSocket, outputFile *os.File) (totalBytes int, chunkCount int, err error) {
+// writeSpeechWebSocketToFile writes every audio chunk and returns the billed
+// characters the final synthesis frame reports.
+func writeSpeechWebSocketToFile(ctx context.Context, ws *minimax.SpeechWebSocket, outputFile *os.File) (totalBytes int, chunkCount int, usageCharacters *int64, err error) {
 	for {
 		event, nextErr := ws.Next(ctx)
 		if errors.Is(nextErr, io.EOF) {
-			return totalBytes, chunkCount, nil
+			return totalBytes, chunkCount, usageCharacters, nil
 		}
 		if nextErr != nil {
-			return 0, 0, fmt.Errorf("failed to read websocket event: %w", nextErr)
+			return 0, 0, nil, fmt.Errorf("failed to read websocket event: %w", nextErr)
 		}
 		if event == nil {
 			continue
 		}
+		if event.UsageCharacters != nil {
+			usageCharacters = event.UsageCharacters
+		}
 		if len(event.Audio) > 0 {
 			if _, writeErr := outputFile.Write(event.Audio); writeErr != nil {
-				return 0, 0, fmt.Errorf("failed to write audio chunk: %w", writeErr)
+				return 0, 0, nil, fmt.Errorf("failed to write audio chunk: %w", writeErr)
 			}
 			totalBytes += len(event.Audio)
 			chunkCount++
 		}
 		if event.Done {
-			return totalBytes, chunkCount, nil
+			return totalBytes, chunkCount, usageCharacters, nil
 		}
 	}
 }

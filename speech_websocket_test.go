@@ -355,3 +355,62 @@ func readWebSocketJSON(t *testing.T, conn *websocket.Conn) map[string]any {
 	}
 	return payload
 }
+
+func TestSpeechWebSocketFinalFrameReportsUsage(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Fatalf("Accept() error = %v", err)
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ok := map[string]any{"status_code": 0, "status_msg": "success"}
+		writeWebSocketJSON(t, conn, map[string]any{"event": "connected_success", "base_resp": ok})
+		readWebSocketJSON(t, conn)
+		writeWebSocketJSON(t, conn, map[string]any{"event": "task_started", "base_resp": ok})
+		readWebSocketJSON(t, conn)
+		readWebSocketJSON(t, conn)
+		writeWebSocketJSON(t, conn, map[string]any{
+			"event": "task_continued", "is_final": false,
+			"data": map[string]any{"audio": "48656c6c6f"}, "base_resp": ok,
+		})
+		writeWebSocketJSON(t, conn, map[string]any{
+			"event": "task_continued", "is_final": true,
+			"data":       map[string]any{"audio": ""},
+			"extra_info": map[string]any{"usage_characters": 26, "word_count": 22},
+			"base_resp":  ok,
+		})
+		writeWebSocketJSON(t, conn, map[string]any{"event": "task_finished", "base_resp": ok})
+	}))
+	defer srv.Close()
+
+	client := newSpeechWebSocketTestClient(t, srv, "test-token")
+	ws, err := client.Speech.OpenWebSocket(context.Background(), SpeechWebSocketRequest{
+		Model: "speech-2.8-turbo", Text: "你好，世界！Hello world 123.", VoiceID: "voice-1",
+	})
+	if err != nil {
+		t.Fatalf("OpenWebSocket() error = %v, want nil", err)
+	}
+	defer ws.Close()
+
+	audio, err := ws.Next(context.Background())
+	if err != nil {
+		t.Fatalf("Next() audio error = %v, want nil", err)
+	}
+	if string(audio.Audio) != "Hello" || audio.IsFinal || audio.UsageCharacters != nil {
+		t.Fatalf("audio event = %+v, want non-final Hello without usage", audio)
+	}
+	final, err := ws.Next(context.Background())
+	if err != nil {
+		t.Fatalf("Next() final error = %v, want nil", err)
+	}
+	if !final.IsFinal || len(final.Audio) != 0 || final.UsageCharacters == nil || *final.UsageCharacters != 26 {
+		t.Fatalf("final event = %+v, want final frame with 26 usage characters", final)
+	}
+	done, err := ws.Next(context.Background())
+	if err != nil || !done.Done {
+		t.Fatalf("Next() done = %+v, %v, want done event", done, err)
+	}
+}
