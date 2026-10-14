@@ -137,11 +137,12 @@ func runStream(opts streamOptions, out io.Writer) (retErr error) {
 	defer cancel()
 
 	speechStream, err := client.Speech.OpenStream(ctx, minimax.SpeechStreamRequest{
-		Model:   opts.model,
-		Text:    opts.text,
-		VoiceID: opts.voiceID,
-		Speed:   opts.speed,
-		Vol:     opts.volume,
+		StreamOptions: &minimax.SpeechStreamOptions{ExcludeAggregatedAudio: true},
+		Model:         opts.model,
+		Text:          opts.text,
+		VoiceID:       opts.voiceID,
+		Speed:         opts.speed,
+		Vol:           opts.volume,
 	})
 	if err != nil {
 		return fmt.Errorf("Speech.OpenStream failed: %w", err)

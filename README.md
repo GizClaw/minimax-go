@@ -53,6 +53,7 @@ Implemented:
 - [x] Voice clone audio uploads: `Voice.UploadCloneAudio` and `Voice.UploadPromptAudio` wrap official file upload purposes.
 - [x] Speech T2A HTTP: `Speech.Synthesize` supports synchronous HTTP TTS with stable official audio, language, subtitle, and output fields.
 - [x] Speech T2A WebSocket: `Speech.OpenWebSocket` implements the official `/ws/v1/t2a_v2` task protocol separately from HTTP stream.
+- [x] Speech T2A HTTP streaming: `Speech.OpenStream` supports numeric incremental/final status, billed character metadata, and `stream_options.exclude_aggregated_audio`. `SpeechChunk.Audio` contains only new audio; a terminal complete copy is exposed separately as `AggregatedAudio`.
 - [x] Speech T2A async: `SpeechAsync.SubmitAsync` and `SpeechAsync.GetAsyncTask` support stable official create/query fields and metadata normalization.
 - [x] Image T2I: `Image.GenerateTextToImage` generates images from text prompts.
 - [x] Image I2I: `Image.GenerateImageToImage` generates images from prompts and subject references.
@@ -67,7 +68,6 @@ Implemented:
 
 Partially implemented:
 
-- [ ] Speech T2A streaming: `Speech.OpenStream` remains an HTTP/SSE helper for source compatibility; use `Speech.OpenWebSocket` for the official WebSocket protocol.
 - [ ] Voice clone: `Voice.CloneVoice` supports `audio_url` and `file_id`; full official preview/prompt clone fields can be added separately.
 - [ ] Music streaming: `Music.Generate` rejects `stream=true`; official streaming music response handling is not implemented yet.
 
@@ -129,3 +129,7 @@ go test ./...
 - `docs/`: official API inventory and implementation status by interface
 - `internal/`: transport/protocol/stream/codec internals
 - `examples/`: runnable CLI demos
+
+## Streaming HTTP lifetime
+
+Default JSON requests have a 30-second client timeout. Streaming responses use their caller context for the full body lifetime, so long audio is not cut off at 30 seconds. An explicit `Config.HTTPClient` is used unchanged, including its timeout, transport, proxy, and connection pool settings. Cancel the context or close the stream when abandoning a response.

@@ -26,6 +26,11 @@ go run ./examples/speech async \
 
 ### 2) Stream
 
+The HTTP/SSE stream writes incremental audio without downloading or replaying
+the terminal aggregate copy. The library exposes final billed character metadata
+through `SpeechChunk.UsageCharacters`. The CLI's `-timeout` still bounds the turn;
+the default SDK stream otherwise lasts until its caller context ends or it closes.
+
 ```bash
 go run ./examples/speech stream \
   -text "hello stream" \

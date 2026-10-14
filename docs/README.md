@@ -17,7 +17,7 @@ Implemented or partially implemented today:
 
 - Speech-to-text: `SpeechToText.Transcribe` (JSON, verbose JSON, SRT, VTT) and `SpeechToText.OpenStream` (SSE); checked 2026-09-09
 - Speech T2A HTTP: `Speech.Synthesize` in `speech.go`
-- Speech T2A HTTP streaming helper: `Speech.OpenStream` in `speech_stream.go`
+- Speech T2A HTTP streaming: `Speech.OpenStream` supports numeric stream status, optional exclusion of terminal aggregate audio, and billed character metadata in `speech_stream.go`.
 - Speech T2A WebSocket: `Speech.OpenWebSocket` in `speech_websocket.go`
 - Speech T2A async create/query: `SpeechAsync` in `speech_async.go`
 - File management: `File.Upload`, `File.List`, `File.Retrieve`, `File.Download`, and `File.Delete` in `file.go`
