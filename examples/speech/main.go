@@ -34,6 +34,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	switch command {
 	case "http":
 		return runHTTPCommand(subArgs, stdout, stderr)
+	case "compare":
+		return runSpeechComparisonCommand(subArgs, stdout, stderr)
+	case "bidi":
+		return runBidiCommand(subArgs, stdout, stderr)
 	case "stream":
 		return runStreamCommand(subArgs, stdout, stderr)
 	case "websocket", "ws":
@@ -55,6 +59,8 @@ func printRootUsage(out io.Writer) {
 	fmt.Fprintln(out, "Commands:")
 	fmt.Fprintln(out, "  async   submit async task or query existing task_id")
 	fmt.Fprintln(out, "  stream  synthesize by SSE stream and write merged audio")
+	fmt.Fprintln(out, "  bidi    stream text into a reusable bidirectional TTS session")
+	fmt.Fprintln(out, "  compare compare HTTP, ordinary WS and a reused bidi session")
 	fmt.Fprintln(out, "  websocket synthesize by official WebSocket protocol")
 	fmt.Fprintln(out, "  task    alias of async task query mode (deprecated)")
 	fmt.Fprintln(out, "  http    synthesize via synchronous HTTP and write audio")

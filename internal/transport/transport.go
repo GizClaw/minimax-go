@@ -105,8 +105,9 @@ type WebSocketRequest struct {
 }
 
 type WebSocketDialConfig struct {
-	URL    string
-	Header http.Header
+	URL        string
+	Header     http.Header
+	HTTPClient *http.Client
 }
 
 func New(config Config) (*Client, error) {
@@ -394,8 +395,9 @@ func (c *Client) BuildWebSocketDialConfig(ctx context.Context, request WebSocket
 	}
 
 	return &WebSocketDialConfig{
-		URL:    req.URL.String(),
-		Header: req.Header.Clone(),
+		URL:        req.URL.String(),
+		Header:     req.Header.Clone(),
+		HTTPClient: c.streamHTTPClient,
 	}, nil
 }
 

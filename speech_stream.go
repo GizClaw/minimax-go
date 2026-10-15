@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/GizClaw/minimax-go/internal/codec"
 	"github.com/GizClaw/minimax-go/internal/protocol"
@@ -64,6 +66,8 @@ type SpeechStream struct {
 	body         io.ReadCloser
 	reader       *stream.Reader
 	done         bool
+	terminal     atomic.Bool
+	cancel       context.CancelFunc
 	closeOnce    sync.Once
 	closeErr     error
 }
@@ -216,12 +220,14 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		}
 	}
 
-	streamResponse, err := s.transport.OpenStreamWithMeta(ctx, transport.StreamRequest{
+	streamCtx, cancel := context.WithCancel(ctx)
+	streamResponse, err := s.transport.OpenStreamWithMeta(streamCtx, transport.StreamRequest{
 		Method: http.MethodPost,
 		Path:   s.streamPath(),
 		Body:   wireReq,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -229,6 +235,7 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		ResponseMeta: responseMetaFromTransport(streamResponse.Meta),
 		body:         streamResponse.Body,
 		reader:       stream.NewReader(streamResponse.Body),
+		cancel:       cancel,
 	}, nil
 }
 
@@ -271,19 +278,39 @@ func (s *SpeechStream) Next() (*SpeechChunk, error) {
 
 		if chunk.Done {
 			s.done = true
+			s.terminal.Store(true)
 		}
 
 		return chunk, nil
 	}
 }
 
-// Close closes the underlying stream body.
+// Close releases the stream. After a terminal event, it drains at most 64 KiB
+// for up to 100ms so normal chunked HTTP responses can return to the pool.
+// Abort paths close immediately; the remaining audio is never replayed.
 func (s *SpeechStream) Close() error {
 	if s == nil || s.body == nil {
 		return nil
 	}
 
 	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			defer s.cancel()
+		}
+		if s.terminal.Load() && s.cancel != nil {
+			finished := make(chan struct{})
+			timer := time.AfterFunc(100*time.Millisecond, func() {
+				defer close(finished)
+				s.cancel()
+				_ = s.body.Close()
+			})
+			_, _ = io.CopyN(io.Discard, s.body, 64<<10)
+			if !timer.Stop() {
+				<-finished
+			}
+		} else if s.cancel != nil {
+			s.cancel()
+		}
 		s.closeErr = s.body.Close()
 	})
 
