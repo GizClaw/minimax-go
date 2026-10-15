@@ -41,11 +41,12 @@ type Config struct {
 }
 
 type Client struct {
-	baseURL        string
-	apiKey         string
-	httpClient     *http.Client
-	defaultHeaders http.Header
-	retry          RetryConfig
+	baseURL          string
+	apiKey           string
+	httpClient       *http.Client
+	streamHTTPClient *http.Client
+	defaultHeaders   http.Header
+	retry            RetryConfig
 }
 
 type ResponseMeta struct {
@@ -104,24 +105,31 @@ type WebSocketRequest struct {
 }
 
 type WebSocketDialConfig struct {
-	URL    string
-	Header http.Header
+	URL        string
+	Header     http.Header
+	HTTPClient *http.Client
 }
 
 func New(config Config) (*Client, error) {
 	retry := withRetryDefaults(config.Retry)
 
 	httpClient := config.HTTPClient
+	streamHTTPClient := httpClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
+		// Stream duration is governed by its context, not the JSON request
+		// timeout. Both clients share the default connection pool. An explicit
+		// caller HTTPClient, including its timeout, remains authoritative.
+		streamHTTPClient = &http.Client{}
 	}
 
 	return &Client{
-		baseURL:        strings.TrimSpace(config.BaseURL),
-		apiKey:         strings.TrimSpace(config.APIKey),
-		httpClient:     httpClient,
-		defaultHeaders: config.DefaultHeaders.Clone(),
-		retry:          retry,
+		baseURL:          strings.TrimSpace(config.BaseURL),
+		apiKey:           strings.TrimSpace(config.APIKey),
+		httpClient:       httpClient,
+		streamHTTPClient: streamHTTPClient,
+		defaultHeaders:   config.DefaultHeaders.Clone(),
+		retry:            retry,
 	}, nil
 }
 
@@ -387,8 +395,9 @@ func (c *Client) BuildWebSocketDialConfig(ctx context.Context, request WebSocket
 	}
 
 	return &WebSocketDialConfig{
-		URL:    req.URL.String(),
-		Header: req.Header.Clone(),
+		URL:        req.URL.String(),
+		Header:     req.Header.Clone(),
+		HTTPClient: c.streamHTTPClient,
 	}, nil
 }
 
@@ -473,7 +482,7 @@ func (c *Client) openStreamAttempt(ctx context.Context, method string, payload [
 	}
 	mergeHeaders(req.Header, request.Headers)
 
-	resp, doErr := c.httpClient.Do(req)
+	resp, doErr := c.streamHTTPClient.Do(req)
 	if doErr != nil {
 		return nil, doErr
 	}

@@ -132,6 +132,7 @@ func (s *SpeechService) OpenWebSocket(ctx context.Context, request SpeechWebSock
 
 	conn, _, err := websocket.Dial(ctx, dialConfig.URL, &websocket.DialOptions{
 		HTTPHeader: dialConfig.Header,
+		HTTPClient: dialConfig.HTTPClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("speech websocket dial: %w", err)
@@ -255,6 +256,15 @@ func (s *SpeechWebSocket) readText(ctx context.Context) ([]byte, error) {
 }
 
 func buildSpeechWebSocketMessages(request SpeechWebSocketRequest) (speechWebSocketStartMessage, speechWebSocketContinueMessage, error) {
+	request.Text = strings.TrimSpace(request.Text)
+	if request.Text == "" {
+		return speechWebSocketStartMessage{}, speechWebSocketContinueMessage{}, errors.New("speech websocket request text is empty")
+	}
+	start, err := buildSpeechWebSocketStartMessage(request)
+	return start, speechWebSocketContinueMessage{Event: "task_continue", Text: request.Text}, err
+}
+
+func buildSpeechWebSocketStartMessage(request SpeechWebSocketRequest) (speechWebSocketStartMessage, error) {
 	request.Model = strings.TrimSpace(request.Model)
 	request.Text = strings.TrimSpace(request.Text)
 	request.VoiceID = strings.TrimSpace(request.VoiceID)
@@ -263,14 +273,11 @@ func buildSpeechWebSocketMessages(request SpeechWebSocketRequest) (speechWebSock
 	request.LanguageBoost = strings.TrimSpace(request.LanguageBoost)
 	request.SubtitleType = strings.TrimSpace(request.SubtitleType)
 
-	if request.Text == "" {
-		return speechWebSocketStartMessage{}, speechWebSocketContinueMessage{}, errors.New("speech websocket request text is empty")
-	}
 	if request.Model == "" {
 		request.Model = defaultSpeechModel
 	}
 	if request.OutputFormat != "" && !strings.EqualFold(request.OutputFormat, defaultSpeechOutputFormat) {
-		return speechWebSocketStartMessage{}, speechWebSocketContinueMessage{}, fmt.Errorf(
+		return speechWebSocketStartMessage{}, fmt.Errorf(
 			"speech websocket output format %q is not supported, only %q is supported",
 			request.OutputFormat,
 			defaultSpeechOutputFormat,
@@ -279,7 +286,7 @@ func buildSpeechWebSocketMessages(request SpeechWebSocketRequest) (speechWebSock
 
 	timberWeights := trimSpeechTimberWeights(request.TimberWeights)
 	if request.VoiceID == "" && len(timberWeights) == 0 {
-		return speechWebSocketStartMessage{}, speechWebSocketContinueMessage{}, errors.New("speech websocket request voice_id is empty")
+		return speechWebSocketStartMessage{}, errors.New("speech websocket request voice_id is empty")
 	}
 
 	start := speechWebSocketStartMessage{
@@ -308,10 +315,7 @@ func buildSpeechWebSocketMessages(request SpeechWebSocketRequest) (speechWebSock
 		}
 	}
 
-	return start, speechWebSocketContinueMessage{
-		Event: "task_continue",
-		Text:  request.Text,
-	}, nil
+	return start, nil
 }
 
 func decodeSpeechWebSocketEvent(raw []byte) (*SpeechWebSocketEvent, error) {

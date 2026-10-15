@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/GizClaw/minimax-go/internal/codec"
 	"github.com/GizClaw/minimax-go/internal/protocol"
@@ -20,6 +22,7 @@ import (
 type SpeechStreamRequest struct {
 	Model                string                   `json:"model,omitempty"`
 	Text                 string                   `json:"text"`
+	StreamOptions        *SpeechStreamOptions     `json:"stream_options,omitempty"`
 	VoiceID              string                   `json:"voice_id,omitempty"`
 	Speed                *float64                 `json:"speed,omitempty"`
 	Vol                  *float64                 `json:"vol,omitempty"`
@@ -37,11 +40,24 @@ type SpeechStreamRequest struct {
 	SubtitleType         string                   `json:"subtitle_type,omitempty"`
 }
 
+// SpeechStreamOptions controls the provider's terminal streaming response.
+type SpeechStreamOptions struct {
+	// ExcludeAggregatedAudio omits the final copy of all previously streamed
+	// audio. Incremental audio and final usage metadata are still returned.
+	ExcludeAggregatedAudio bool `json:"exclude_aggregated_audio"`
+}
+
+// SpeechChunk contains newly streamed audio and optional terminal metadata.
 type SpeechChunk struct {
 	Event       string
 	Audio       []byte
 	RawHexAudio string
 	Done        bool
+	// AggregatedAudio is the final complete copy when stream_options does not
+	// exclude it. It is separate from Audio to avoid playing the stream twice.
+	AggregatedAudio []byte
+	// UsageCharacters is the provider's billed count from final extra_info.
+	UsageCharacters *int64
 }
 
 // SpeechStream reads speech stream events and yields decoded audio chunks.
@@ -50,6 +66,8 @@ type SpeechStream struct {
 	body         io.ReadCloser
 	reader       *stream.Reader
 	done         bool
+	terminal     atomic.Bool
+	cancel       context.CancelFunc
 	closeOnce    sync.Once
 	closeErr     error
 }
@@ -58,6 +76,7 @@ type speechStreamWireRequest struct {
 	Model             string                   `json:"model"`
 	Text              string                   `json:"text"`
 	Stream            bool                     `json:"stream"`
+	StreamOptions     *SpeechStreamOptions     `json:"stream_options,omitempty"`
 	OutputFormat      string                   `json:"output_format,omitempty"`
 	VoiceSetting      *speechVoiceSetting      `json:"voice_setting,omitempty"`
 	AudioSetting      *speechAudioSettingWire  `json:"audio_setting,omitempty"`
@@ -70,42 +89,72 @@ type speechStreamWireRequest struct {
 }
 
 type speechStreamEventPayload struct {
-	Data       speechStreamEventData `json:"data"`
-	AudioHex   string                `json:"audio_hex,omitempty"`
-	Audio      string                `json:"audio,omitempty"`
-	Hex        string                `json:"hex,omitempty"`
-	Chunk      string                `json:"chunk,omitempty"`
-	Output     string                `json:"output,omitempty"`
-	Type       string                `json:"type,omitempty"`
-	Status     string                `json:"status,omitempty"`
-	State      string                `json:"state,omitempty"`
-	Done       bool                  `json:"done,omitempty"`
-	IsFinal    bool                  `json:"is_final,omitempty"`
-	Finished   bool                  `json:"finished,omitempty"`
-	StatusCode int                   `json:"status_code,omitempty"`
-	StatusMsg  string                `json:"status_msg,omitempty"`
-	Error      string                `json:"error,omitempty"`
-	ErrorMsg   string                `json:"error_msg,omitempty"`
-	Message    string                `json:"message,omitempty"`
+	Data       speechStreamEventData  `json:"data"`
+	AudioHex   string                 `json:"audio_hex,omitempty"`
+	Audio      string                 `json:"audio,omitempty"`
+	Hex        string                 `json:"hex,omitempty"`
+	Chunk      string                 `json:"chunk,omitempty"`
+	Output     string                 `json:"output,omitempty"`
+	Type       string                 `json:"type,omitempty"`
+	Status     speechStreamStatus     `json:"status,omitempty"`
+	State      string                 `json:"state,omitempty"`
+	Done       bool                   `json:"done,omitempty"`
+	IsFinal    bool                   `json:"is_final,omitempty"`
+	Finished   bool                   `json:"finished,omitempty"`
+	StatusCode int                    `json:"status_code,omitempty"`
+	StatusMsg  string                 `json:"status_msg,omitempty"`
+	Error      string                 `json:"error,omitempty"`
+	ErrorMsg   string                 `json:"error_msg,omitempty"`
+	Message    string                 `json:"message,omitempty"`
+	ExtraInfo  *speechStreamExtraInfo `json:"extra_info,omitempty"`
 }
 
 type speechStreamEventData struct {
-	AudioHex   string `json:"audio_hex,omitempty"`
-	Audio      string `json:"audio,omitempty"`
-	Hex        string `json:"hex,omitempty"`
-	Chunk      string `json:"chunk,omitempty"`
-	Output     string `json:"output,omitempty"`
-	Type       string `json:"type,omitempty"`
-	Status     string `json:"status,omitempty"`
-	State      string `json:"state,omitempty"`
-	Done       bool   `json:"done,omitempty"`
-	IsFinal    bool   `json:"is_final,omitempty"`
-	Finished   bool   `json:"finished,omitempty"`
-	StatusCode int    `json:"status_code,omitempty"`
-	StatusMsg  string `json:"status_msg,omitempty"`
-	Error      string `json:"error,omitempty"`
-	ErrorMsg   string `json:"error_msg,omitempty"`
-	Message    string `json:"message,omitempty"`
+	AudioHex   string             `json:"audio_hex,omitempty"`
+	Audio      string             `json:"audio,omitempty"`
+	Hex        string             `json:"hex,omitempty"`
+	Chunk      string             `json:"chunk,omitempty"`
+	Output     string             `json:"output,omitempty"`
+	Type       string             `json:"type,omitempty"`
+	Status     speechStreamStatus `json:"status,omitempty"`
+	State      string             `json:"state,omitempty"`
+	Done       bool               `json:"done,omitempty"`
+	IsFinal    bool               `json:"is_final,omitempty"`
+	Finished   bool               `json:"finished,omitempty"`
+	StatusCode int                `json:"status_code,omitempty"`
+	StatusMsg  string             `json:"status_msg,omitempty"`
+	Error      string             `json:"error,omitempty"`
+	ErrorMsg   string             `json:"error_msg,omitempty"`
+	Message    string             `json:"message,omitempty"`
+}
+
+type speechStreamExtraInfo struct {
+	UsageCharacters *int64 `json:"usage_characters,omitempty"`
+}
+
+// Official T2A responses use numeric status 1/2. Some compatible endpoints
+// use text states, so preserve both representations without weakening errors.
+type speechStreamStatus string
+
+func (s *speechStreamStatus) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*s = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = speechStreamStatus(text)
+		return nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err != nil {
+		return fmt.Errorf("decode speech stream status: %w", err)
+	}
+	if _, err := number.Int64(); err != nil {
+		return fmt.Errorf("decode speech stream integer status: %w", err)
+	}
+	*s = speechStreamStatus(number.String())
+	return nil
 }
 
 // OpenStream opens a speech synthesis stream and returns a stream reader.
@@ -147,6 +196,7 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		Model:             request.Model,
 		Text:              request.Text,
 		Stream:            true,
+		StreamOptions:     request.StreamOptions,
 		OutputFormat:      request.OutputFormat,
 		AudioSetting:      speechAudioSettingForHTTP(request.AudioSetting),
 		PronunciationDict: request.PronunciationDict,
@@ -170,12 +220,14 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		}
 	}
 
-	streamResponse, err := s.transport.OpenStreamWithMeta(ctx, transport.StreamRequest{
+	streamCtx, cancel := context.WithCancel(ctx)
+	streamResponse, err := s.transport.OpenStreamWithMeta(streamCtx, transport.StreamRequest{
 		Method: http.MethodPost,
 		Path:   s.streamPath(),
 		Body:   wireReq,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -183,6 +235,7 @@ func (s *SpeechService) OpenStream(ctx context.Context, request SpeechStreamRequ
 		ResponseMeta: responseMetaFromTransport(streamResponse.Meta),
 		body:         streamResponse.Body,
 		reader:       stream.NewReader(streamResponse.Body),
+		cancel:       cancel,
 	}, nil
 }
 
@@ -225,19 +278,39 @@ func (s *SpeechStream) Next() (*SpeechChunk, error) {
 
 		if chunk.Done {
 			s.done = true
+			s.terminal.Store(true)
 		}
 
 		return chunk, nil
 	}
 }
 
-// Close closes the underlying stream body.
+// Close releases the stream. After a terminal event, it drains at most 64 KiB
+// for up to 100ms so normal chunked HTTP responses can return to the pool.
+// Abort paths close immediately; the remaining audio is never replayed.
 func (s *SpeechStream) Close() error {
 	if s == nil || s.body == nil {
 		return nil
 	}
 
 	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			defer s.cancel()
+		}
+		if s.terminal.Load() && s.cancel != nil {
+			finished := make(chan struct{})
+			timer := time.AfterFunc(100*time.Millisecond, func() {
+				defer close(finished)
+				s.cancel()
+				_ = s.body.Close()
+			})
+			_, _ = io.CopyN(io.Discard, s.body, 64<<10)
+			if !timer.Stop() {
+				<-finished
+			}
+		} else if s.cancel != nil {
+			s.cancel()
+		}
 		s.closeErr = s.body.Close()
 	})
 
@@ -281,11 +354,15 @@ func decodeSpeechStreamEvent(event stream.Event) (*SpeechChunk, error) {
 	}
 
 	isDone := payload.done() || isSpeechStreamDoneEvent(eventName)
+	chunk := &SpeechChunk{Event: eventName, Done: isDone}
+	if payload.ExtraInfo != nil {
+		chunk.UsageCharacters = cloneInt64Pointer(payload.ExtraInfo.UsageCharacters)
+	}
 
 	hexAudio := payload.hexAudio()
 	if hexAudio == "" {
 		if isDone {
-			return &SpeechChunk{Event: eventName, Done: true}, nil
+			return chunk, nil
 		}
 
 		if strings.EqualFold(eventName, "error") {
@@ -303,12 +380,13 @@ func decodeSpeechStreamEvent(event stream.Event) (*SpeechChunk, error) {
 		return nil, fmt.Errorf("decode speech stream audio chunk: %w", err)
 	}
 
-	return &SpeechChunk{
-		Event:       eventName,
-		Audio:       audio,
-		RawHexAudio: hexAudio,
-		Done:        isDone,
-	}, nil
+	chunk.RawHexAudio = hexAudio
+	if payload.Data.Status == "2" || payload.Status == "2" {
+		chunk.AggregatedAudio = audio
+	} else {
+		chunk.Audio = audio
+	}
+	return chunk, nil
 }
 
 func (s *SpeechService) streamPath() string {
@@ -349,10 +427,10 @@ func (p speechStreamEventPayload) done() bool {
 
 	statuses := []string{
 		p.Type,
-		p.Status,
+		string(p.Status),
 		p.State,
 		p.Data.Type,
-		p.Data.Status,
+		string(p.Data.Status),
 		p.Data.State,
 	}
 
@@ -396,7 +474,7 @@ func isSpeechStreamDoneEvent(eventName string) bool {
 
 func isSpeechStreamDoneStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "done", "finish", "finished", "complete", "completed", "end", "ended":
+	case "2", "done", "finish", "finished", "complete", "completed", "end", "ended":
 		return true
 	default:
 		return false
